@@ -1,3 +1,13 @@
+# Based on learn-vault-docker-lab by HashiCorp Education
+# Modified by Denis Zwinger (2025) — Licensed under MPL-2.0
+#
+# Vault Cloud Infra — Git Ignore Rules
+#
+# This file includes ignore rules for:
+# - Terraform state and lock files
+# - Bootstrap logs and generated artifacts
+# - Vault secrets and initialization outputs
+
 .DS_Store
 .devenv
 .devenv.flake.nix
@@ -6,7 +16,15 @@
 .vault_docker_lab_1_init
 devenv.lock
 terraform.tfstate
+terraform.tfvars
 terraform.tfstate.backup
 containers/vault_docker_lab_?/data/*
 containers/vault_docker_lab_?/logs/*
 vault_docker_lab.log
+backups
+vault-agent/auth
+vault-agent/token
+vault-agent/rendered
+vault-agent/sockets
+docs
+logs

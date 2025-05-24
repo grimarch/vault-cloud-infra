@@ -1,3 +1,58 @@
+# 🔐 Vault Cloud Infra
+
+> Infrastructure-as-Code project for automated HashiCorp Vault deployment in Docker and DigitalOcean  
+> **Built with Terraform, cloud-init, bootstrap scripting, and audit logging**
+
+![Terraform](https://img.shields.io/badge/Terraform-1.5+-623CE4?logo=terraform)
+![License: MPL-2.0](https://img.shields.io/badge/license-MPL_2.0-brightgreen)
+![Status: Pet Project](https://img.shields.io/badge/status-pet--project-blue)
+![Platform: DigitalOcean](https://img.shields.io/badge/platform-DigitalOcean-0080FF?logo=digitalocean)
+
+## 🧠 About
+
+This project demonstrates how to automate the provisioning and initialization of a secure HashiCorp Vault cluster using:
+
+- 🔧 **Terraform** — infrastructure as code for creating Docker-based Vault cluster and optional cloud VMs
+- ☁️ **DigitalOcean** — deploy Vault to a cloud instance with pre-configuration
+- ⚙️ **cloud-init** — for installing required dependencies on remote machines
+- 🚀 **Bootstrap scripts** — initialize and unseal Vault with AppRole setup
+- 🪵 **Logging and audit** — full CLI logging and state archive during deployment
+- 📁 **Modular structure** — supports CI/CD integration and future expansion
+
+## 📌 Key Features
+
+- ✅ Deploy Vault in Docker either locally or in the cloud (DigitalOcean)
+- ✅ Configure number of standby nodes dynamically via Terraform
+- ✅ Log and archive all provisioning and bootstrap output
+- ✅ Securely initialize Vault with temporary tokens for AppRole auth
+- ✅ Ready-to-use scripts for development, testing, or PoC
+
+## 🛠 Tech Stack
+
+- Terraform (`.tf` + provisioners)
+- DigitalOcean provider
+- Docker-based Vault cluster (official image)
+- cloud-init
+- Shell scripts (`deploy.sh`, `init-bootstrap.sh`, `cloud-init.sh`)
+- Audit logging and backup
+
+## 🧪 Use Cases
+
+- ✔️ DevSecOps training & demonstration
+- ✔️ CI/CD integration prototype
+- ✔️ Pet project for learning infrastructure-as-code patterns
+- ✔️ Secure secret management at small scale
+
+## 📜 License
+
+This project is based on [learn-vault-docker-lab](https://github.com/hashicorp-education/learn-vault-docker-lab) by HashiCorp Education  
+Modified and extended by **Denis Zwinger** in 2025  
+Licensed under [Mozilla Public License 2.0](./LICENSE)
+
+---
+
+⬇️ Original `README.md` by HashiCorp follows (for compatibility and usage instructions)
+
 # Vault Docker Lab
 
 ```plaintext
@@ -172,7 +227,7 @@ There are just a handful of steps to make your own Vault Docker Lab.
    [vault-docker-lab] Unsealing cluster nodes .....vault_docker_lab_2. vault_docker_lab_3. vault_docker_lab_4. vault_docker_lab_5. Done.
    [vault-docker-lab] Enable audit device ...Done.
    [vault-docker-lab] Export VAULT_ADDR for the active node: export VAULT_ADDR=https://127.0.0.1:8200
-   [vault-docker-lab] Login to Vault with initial root token: vault login hvs.euAmS2Wc0ff3339uxTKYVtqK
+   [vault-docker-lab] Login to Vault with initial root token: vault login <VAULT_TOKEN>
    ```
 
 1. Follow the instructions to set an appropriate `VAULT_ADDR` environment variable, and login to Vault with the initial root token value.
