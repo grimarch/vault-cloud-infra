@@ -1,3 +1,18 @@
+# This Makefile is based on learn-vault-docker-lab by HashiCorp Education.
+# Modified by Denis Zwinger in 2025 to support cloud deployment, cloud-init,
+# logging, and multi-stage Terraform execution.
+# Licensed under the Mozilla Public License 2.0.
+
+# ------------------------------------------------------------------------------
+# Vault Cloud Infra — Makefile
+# ------------------------------------------------------------------------------
+# Provides automation for:
+# - Terraform initialization and apply
+# - cloud-init provisioning of VMs
+# - Vault bootstrap and audit logging
+# ------------------------------------------------------------------------------
+
+
 MY_NAME_IS := [vault-docker-lab]
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 UNAME := $$(uname)
@@ -8,7 +23,7 @@ VAULT_DOCKER_LAB_LOG_FILE = ./vault_docker_lab.log
 
 default: all
 
-all: prerequisites provision vault_status unseal_nodes audit_device done
+all: prerequisites provision vault_status unseal_nodes audit_device done bootstrap
 
 stage: prerequisites provision done-stage
 
@@ -82,10 +97,53 @@ clean:
 
 cleanest: clean
 	@printf "$(MY_NAME_IS) Removing all Terraform runtime configuration and state ..."
-	@rm -f terraform.tfstate
-	@rm -f terraform.tfstate.backup
-	@rm -rf .terraform
-	@rm -f .terraform.lock.hcl
+	@rm -fv terraform.tfstate
+	@rm -fv terraform.tfstate.backup
+	@rm -rfv .terraform
+	@rm -fv .terraform.lock.hcl
+	@make remove-bootstrap
 	@echo 'Done.'
+
+bootstrap:
+	@echo "$(MY_NAME_IS) Run init-bootstrap.sh (initial bootstrap Vault)..."
+	@./scripts/init-bootstrap.sh 
+	@echo "$(MY_NAME_IS) Bootstrap completed successfully."
+
+remove-bootstrap:
+	@echo "$(MY_NAME_IS) Removing bootstrap artifacts..."
+	@rm -fv .vault_bootstrap_done
+	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
+
+deploy:
+	@echo "$(MY_NAME_IS) Running deploy script..."
+	@./scripts/deploy.sh
+	@echo "$(MY_NAME_IS) Deploy script completed successfully."
+
+destroy:
+	@echo "$(MY_NAME_IS) Running destroy script..."
+	@terraform destroy -auto-approve
+	@rm -rfv .terraform \
+        terraform.tfstate \
+        terraform.tfstate.backup \
+        .terraform.lock.hcl \
+        .vault_docker_lab_1_init \
+        .vault_docker_lab_1_init.json \
+        .vault-setup-info.txt \
+        .vault_keys.json \
+        stage1.tfplan \
+        stage2.tfplan
+	@echo "$(MY_NAME_IS) Destroy script completed successfully."
+
+archive-logs: ## Archive logs
+	@echo "📦 Archiving logs..."
+	@timestamp=$$(date +%Y%m%d_%H%M%S); \
+	archive_name="logs/deploy-$${timestamp}.tar.zst"; \
+	find logs/ -type f -name '*.log' > logs_to_archive.txt; \
+	tar --files-from=logs_to_archive.txt -I 'zstd -19 -T0' -cf "$${archive_name}"; \
+	echo "🗑️  Deleting archived files..."; \
+	xargs rm -v < logs_to_archive.txt; \
+	rm logs_to_archive.txt; \
+	echo "✅ Archive created: $${archive_name}"
+
 
 .PHONY: all
