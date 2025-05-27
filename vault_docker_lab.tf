@@ -367,7 +367,8 @@ resource "null_resource" "vault_bootstrap" {
       "export ROOT_TOKEN=$(grep 'Initial Root Token' /opt/vault_lab/.vault_docker_lab_1_init | awk '{print $NF}')",
       "if [ -z \"$ROOT_TOKEN\" ]; then echo 'Error: ROOT_TOKEN could not be extracted on droplet for bootstrap.'; exit 1; fi",
       "export VAULT_TOKEN=$ROOT_TOKEN", # Set VAULT_TOKEN for the script
-      "/tmp/init-bootstrap.sh"
+      # Pass floating_ip as an argument to the bootstrap script
+      "/tmp/init-bootstrap.sh --floating_ip=${digitalocean_floating_ip.vault_fip.ip_address}"
     ]
   }
 }
@@ -394,6 +395,66 @@ resource "null_resource" "all_nodes_configured_marker" {
       # This requires `vault` CLI to be configured with appropriate auth if needed (e.g. token or TLS certs)
       # For now, just an echo indicating completion.
       # VAULT_ADDR="https://${var.droplet_ip}:8200" vault operator raft list-peers || echo "Could not list raft peers, but Terraform steps completed."
+    EOT
+  }
+}
+
+# Resource for downloading necessary files from remote server
+resource "null_resource" "download_vault_files" {
+  depends_on = [
+    null_resource.all_nodes_configured_marker
+  ]
+
+  triggers = {
+    # Re-run when the configuration is complete
+    nodes_configured = null_resource.all_nodes_configured_marker.id
+  }
+
+  connection {
+    type        = "ssh"
+    host        = var.droplet_ip
+    user        = "root"
+    private_key = file(var.ssh_private_key_path)
+    timeout     = "2m"
+  }
+
+  # First, check if files exist on remote server
+  provisioner "remote-exec" {
+    inline = [
+      "if [ ! -f /opt/vault_lab/.vault_docker_lab_1_init ]; then echo 'Init file not found on remote server!'; exit 1; fi",
+      "if [ ! -f /opt/vault_lab/backups/bootstrap-token ]; then echo 'Bootstrap token file not found on remote server!'; exit 1; fi",
+      "echo 'Required files exist on remote server.'"
+    ]
+  }
+
+  # Create local backup directory
+  provisioner "local-exec" {
+    command = "mkdir -p ./backups"
+  }
+
+  # Download vault init file
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading Vault init file from remote server..."
+      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
+      if [ $? -eq 0 ]; then
+        echo "Vault init file downloaded to .vault_docker_lab_1_init"
+      else
+        echo "Failed to download vault init file"
+      fi
+    EOT
+  }
+
+  # Download bootstrap token file
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading bootstrap token file..."
+      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token ./.bootstrap-token
+      if [ $? -eq 0 ]; then
+        echo "Bootstrap token file downloaded to ./.bootstrap-token"
+      else
+        echo "Failed to download bootstrap token file"
+      fi
     EOT
   }
 }

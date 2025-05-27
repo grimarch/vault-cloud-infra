@@ -14,6 +14,7 @@
 .terraform
 .terraform.lock.hcl
 .vault_docker_lab_1_init
+.bootstrap-token
 devenv.lock
 terraform.tfstate
 terraform.tfvars

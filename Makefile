@@ -114,27 +114,43 @@ remove-bootstrap:
 	@rm -fv .vault_bootstrap_done
 	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
 
+MY_NAME_IS := [vault-cloud-infra]
 deploy:
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
+deploy-debug:
+	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
+	@./scripts/deploy.sh --debug
+	@echo "$(MY_NAME_IS) Deploy script completed successfully."
+
 destroy:
 	@echo "$(MY_NAME_IS) Running destroy script..."
 	@terraform destroy -auto-approve
+	@read -p "⚠️  This will remove all Terraform configuration on your local machine. Are you sure you want to clean up Terraform configuration? (y/n): " confirm; \
+	if [ "$$confirm" != "y" ]; then \
+		echo "🚫 Cleanup cancelled"; \
+		exit 1; \
+	fi;
+	@echo "$(MY_NAME_IS) Removing Terraform configuration..."
 	@rm -rfv .terraform \
         terraform.tfstate \
         terraform.tfstate.backup \
         .terraform.lock.hcl \
         .vault_docker_lab_1_init \
-        .vault_docker_lab_1_init.json \
-        .vault-setup-info.txt \
-        .vault_keys.json \
+		.bootstrap-token \
         stage1.tfplan \
         stage2.tfplan
 	@echo "$(MY_NAME_IS) Destroy script completed successfully."
 
-archive-logs: ## Archive logs
+revoke-root-token:
+	@echo "$(MY_NAME_IS) Revoking root token..."
+	@VAULT_ADDR=https://127.0.0.1:8200 VAULT_TOKEN=$(ROOT_TOKEN) vault token revoke $(ROOT_TOKEN)
+	@echo "$(MY_NAME_IS) Root token revoked successfully."
+
+
+archive-logs:
 	@echo "📦 Archiving logs..."
 	@timestamp=$$(date +%Y%m%d_%H%M%S); \
 	archive_name="logs/deploy-$${timestamp}.tar.zst"; \

@@ -27,6 +27,51 @@ This project demonstrates how to automate the provisioning and initialization of
 - ✅ Securely initialize Vault with temporary tokens for AppRole auth
 - ✅ Ready-to-use scripts for development, testing, or PoC
 
+
+## 🚀 Usage
+
+The `Makefile` simplifies deployment and cleanup operations. Below are the key commands:
+
+### 📦 Deploy Vault (cloud)
+
+```bash
+make deploy
+```
+
+This will:
+
+- Deploy infrastructure using Terraform in Digital Ocean cloud
+- Run cloud-init
+- Bootstrap Vault and unseal nodes
+- Enable audit logging
+- Output `droplet_public_ip`, `floating_ip_address` and instructions how to use and access Vault
+
+If you want to see each executing command by script:
+```bash
+make deploy-debug
+```
+
+To destroy your droplet with all Vault configuration and (optionally) cleanup Terraform configuration:
+
+```bash
+make destroy
+```
+
+### 🔧 Configuration Options (via environment variables)
+
+
+You can override default behavior using `TF_VAR_*` variables:
+
+| Variable                         | Description                                                                 |
+|----------------------------------|-----------------------------------------------------------------------------|
+| `TF_VAR_do_token`                | DigitalOcean API token.                                                     |
+| `TF_VAR_do_region`               | The DigitalOcean region to deploy resources in. Default "fra1"              |
+| `TF_VAR_do_droplet_size`         | The size slug for the DigitalOcean Droplet. Default "s-1vcpu-2gb"           |
+| `TF_VAR_do_droplet_image`        | The image slug for the DigitalOcean Droplet. Deafult "ubuntu-22-04-x64"     |
+| `TF_VAR_do_ssh_key_fingerprint`  | The fingerprint of the SSH key to add to the Droplet.                       |
+| `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-host"                     |
+
+
 ## 🛠 Tech Stack
 
 - Terraform (`.tf` + provisioners)
@@ -227,7 +272,7 @@ There are just a handful of steps to make your own Vault Docker Lab.
    [vault-docker-lab] Unsealing cluster nodes .....vault_docker_lab_2. vault_docker_lab_3. vault_docker_lab_4. vault_docker_lab_5. Done.
    [vault-docker-lab] Enable audit device ...Done.
    [vault-docker-lab] Export VAULT_ADDR for the active node: export VAULT_ADDR=https://127.0.0.1:8200
-   [vault-docker-lab] Login to Vault with initial root token: vault login <VAULT_TOKEN>
+   [vault-docker-lab] Login to Vault with initial root token: vault login hvs.euAmS2Wc0ff3339uxTKYVtqK
    ```
 
 1. Follow the instructions to set an appropriate `VAULT_ADDR` environment variable, and login to Vault with the initial root token value.
