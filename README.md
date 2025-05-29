@@ -12,20 +12,24 @@
 
 This project demonstrates how to automate the provisioning and initialization of a secure HashiCorp Vault cluster using:
 
-- 🔧 **Terraform** — infrastructure as code for creating Docker-based Vault cluster and optional cloud VMs
+- 🔧 **Terraform** — infrastructure as code for creating cloud VMs and orchestrating deployment
 - ☁️ **DigitalOcean** — deploy Vault to a cloud instance with pre-configuration
+- 🐳 **Docker Compose** — container orchestration for Vault nodes via SSH-based provisioning
 - ⚙️ **cloud-init** — for installing required dependencies on remote machines
 - 🚀 **Bootstrap scripts** — initialize and unseal Vault with AppRole setup
 - 🪵 **Logging and audit** — full CLI logging and state archive during deployment
 - 📁 **Modular structure** — supports CI/CD integration and future expansion
+- 🔒 **Security focused** — hardened configuration with enhanced isolation
 
 ## 📌 Key Features
 
-- ✅ Deploy Vault in Docker either locally or in the cloud (DigitalOcean)
+- ✅ Deploy Vault in Docker on cloud (DigitalOcean) instances
 - ✅ Configure number of standby nodes dynamically via Terraform
 - ✅ Log and archive all provisioning and bootstrap output
 - ✅ Securely initialize Vault with temporary tokens for AppRole auth
 - ✅ Ready-to-use scripts for development, testing, or PoC
+- ✅ Enhanced security with docker-compose and local socket access only
+- ✅ Automated Vault cluster configuration with raft storage
 
 
 ## 🚀 Usage
@@ -76,9 +80,11 @@ You can override default behavior using `TF_VAR_*` variables:
 
 - Terraform (`.tf` + provisioners)
 - DigitalOcean provider
+- Docker Compose for container orchestration
 - Docker-based Vault cluster (official image)
-- cloud-init
-- Shell scripts (`deploy.sh`, `init-bootstrap.sh`, `cloud-init.sh`)
+- cloud-init for VM provisioning
+- Shell scripts (`generate-docker-compose.sh`, `init-bootstrap.sh`, `cloud-init.sh`)
+- SSH-based remote configuration
 - Audit logging and backup
 
 ## 🧪 Use Cases

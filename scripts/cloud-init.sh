@@ -52,12 +52,10 @@ echo "✅ Docker group configuration attempted."
 
 # --- Docker Setup using injected functions ---
 ensure_docker_installed_and_running
-configure_docker_tcp_listening
-reload_and_restart_docker
 verify_docker_setup
 # --- End of Docker Setup ---
 
-echo "✅ Docker successfully configured and verified to listen on port 2375."
+echo "✅ Docker successfully configured and verified."
 
 # Create base directory for Vault configurations and data on the Droplet
 echo "Creating base directories for Vault..."

@@ -38,33 +38,16 @@ resource "local_file" "vault_init_placeholder" {
 # Provider configuration
 # -----------------------------------------------------------------------
 
-provider "docker" {
-  // host = var.docker_host # Removed to allow DOCKER_HOST environment variable to take precedence
-}
+# Docker provider removed - we'll use docker-compose on the remote host instead
+
 # -----------------------------------------------------------------------
 # Docker network
 # -----------------------------------------------------------------------
 
-resource "docker_network" "vault_docker_lab_network" {
-  name            = "vault_docker_lab_network"
-  attachable      = true
-  check_duplicate = true
-  ipam_config {
-    subnet = "10.1.42.0/24"
-  }
-}
+# Docker provider removed - we'll use docker-compose on the remote host instead
 
 # -----------------------------------------------------------------------
-# Vault image
-# -----------------------------------------------------------------------
-
-resource "docker_image" "vault" {
-  name         = "hashicorp/${var.vault_edition}:${var.vault_version}"
-  keep_locally = true // Keep true for local dev, for droplet this might not be necessary or could be false
-}
-
-# -----------------------------------------------------------------------
-# Vault container resources
+# Vault container configuration (used for unseal logic)
 # -----------------------------------------------------------------------
 
 locals {
@@ -109,62 +92,46 @@ locals {
   }
 }
 
-resource "docker_container" "vault-docker-lab" {
-  for_each = local.vault_containers
-  name     = each.key
-  hostname = each.key
-  env      = each.value.env
-  command = ["vault",
-    "server",
-    "-config",
-    "/vault/config/server.hcl",
-    "-log-level",
-    var.vault_log_level
-  ]
-  image    = docker_image.vault.name
-  must_run = true
-  rm       = false # Set to false to allow inspection of failed containers, true for production
+# -----------------------------------------------------------------------
+# Deploy Docker containers via docker-compose
+# -----------------------------------------------------------------------
 
-  capabilities {
-    add = ["IPC_LOCK", "SYSLOG"] # IPC_LOCK is recommended by HashiCorp for Vault
-  }
-
-  healthcheck {
-    test         = ["CMD", "vault", "status"] # Basic health check
-    interval     = "10s"
-    timeout      = "2s"
-    start_period = "10s" # Give Vault some time to start before health checks begin
-    retries      = 2
-  }
-
-  networks_advanced {
-    name         = docker_network.vault_docker_lab_network.name
-    ipv4_address = each.value.ipv4_address
-  }
-
-  ports {
-    internal = each.value.internal_port
-    external = each.value.external_port
-    protocol = "tcp"
-  }
-
-  volumes {
-    host_path      = each.value.host_path_certs
-    container_path = "/vault/certs"
-  }
-
-  volumes {
-    host_path      = each.value.host_path_config
-    container_path = "/vault/config"
-  }
-
-  volumes {
-    host_path      = each.value.host_path_logs
-    container_path = "/vault/logs"
-  }
-
-  # Ensure the Droplet is ready and cloud-init is done before creating containers
+resource "null_resource" "deploy_docker_compose" {
   depends_on = [digitalocean_droplet.vault_host]
+
+  triggers = {
+    generate_script_hash = filemd5("${path.module}/scripts/generate-docker-compose.sh")
+    num_nodes = var.num_vault_nodes
+    droplet_id = digitalocean_droplet.vault_host.id
+  }
+
+  connection {
+    type        = "ssh"
+    host        = var.droplet_ip
+    user        = "root"
+    private_key = file(var.ssh_private_key_path)
+    timeout     = "5m"
+  }
+
+  # Copy the docker-compose generation script to the server
+  provisioner "file" {
+    source      = "${path.module}/scripts/generate-docker-compose.sh"
+    destination = "/tmp/generate-docker-compose.sh"
+  }
+
+  # Generate docker-compose.yml and start containers
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/generate-docker-compose.sh",
+      "/tmp/generate-docker-compose.sh ${var.num_vault_nodes} ${digitalocean_floating_ip.vault_fip.ip_address} /opt/vault_lab/docker-compose.yml",
+      "cd /opt/vault_lab",
+      "docker-compose pull",
+      "docker-compose up -d --remove-orphans",
+      "echo 'Waiting for containers to start...'",
+      "sleep 10",
+      "docker-compose ps"
+    ]
+  }
 }
 
 # -----------------------------------------------------------------------
@@ -174,12 +141,12 @@ resource "docker_container" "vault-docker-lab" {
 # Initialize the first Vault node
 resource "null_resource" "active_node_init" {
   depends_on = [
-    docker_container.vault-docker-lab["vault_docker_lab_1"],
+    null_resource.deploy_docker_compose,
     local_file.vault_init_placeholder
   ]
 
   triggers = {
-    vault_node1_container_id = docker_container.vault-docker-lab["vault_docker_lab_1"].id
+    docker_compose_deployed = null_resource.deploy_docker_compose.id
   }
 
   connection {
@@ -205,11 +172,11 @@ resource "null_resource" "active_node_init" {
 resource "null_resource" "active_node_unseal" {
   depends_on = [
     null_resource.active_node_init,
-    docker_container.vault-docker-lab["vault_docker_lab_1"]
+    null_resource.deploy_docker_compose
   ]
 
   triggers = {
-    vault_node1_container_id = docker_container.vault-docker-lab["vault_docker_lab_1"].id
+    docker_compose_deployed = null_resource.deploy_docker_compose.id
     init_resource_id         = null_resource.active_node_init.id
   }
 
@@ -240,13 +207,13 @@ resource "null_resource" "unseal_standby_node" {
 
   depends_on = [
     null_resource.active_node_unseal,
-    docker_container.vault-docker-lab # Depends on all Vault containers
+    null_resource.deploy_docker_compose # Depends on docker-compose deployment
   ]
 
   triggers = {
-    # Re-run if the active node unseal process changes or the specific standby container changes
+    # Re-run if the active node unseal process changes or docker-compose changes
     active_node_unsealed_id   = null_resource.active_node_unseal.id
-    standby_node_container_id = docker_container.vault-docker-lab[each.key].id
+    docker_compose_deployed   = null_resource.deploy_docker_compose.id
     # Re-run this resource if the content of the script file changes
     script_hash               = filemd5("${path.module}/scripts/unseal-standby-node.sh")
   }

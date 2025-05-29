@@ -129,14 +129,10 @@ fi
 
 log_info "🔐 Setting up environment variables..."
 export FLOATING_IP
-export DOCKER_HOST="tcp://${FLOATING_IP}:2375"
-export TF_VAR_docker_host="tcp://${FLOATING_IP}:2375"
 export TF_VAR_droplet_ip="${FLOATING_IP}"
 export TF_VAR_ssh_private_key_path="/home/archie/.ssh/id_ed25519_personal"
 
 echo "FLOATING_IP=${FLOATING_IP}"
-echo "DOCKER_HOST=${DOCKER_HOST}"
-echo "TF_VAR_docker_host=${TF_VAR_docker_host}"
 echo "TF_VAR_droplet_ip=${TF_VAR_droplet_ip}"
 echo "TF_VAR_ssh_private_key_path=${TF_VAR_ssh_private_key_path}"
 
