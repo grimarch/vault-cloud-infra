@@ -31,6 +31,41 @@ This project demonstrates how to automate the provisioning and initialization of
 - ✅ Enhanced security with docker-compose and local socket access only
 - ✅ Automated Vault cluster configuration with raft storage
 
+## 🔐 Configuration
+
+### Prerequisites
+
+1. **DigitalOcean Account** with an API token
+2. **SSH Key** uploaded to your DigitalOcean account
+3. **Terraform** installed locally
+
+### Setup
+
+1. Copy the example configuration file:
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   ```
+
+2. **Set your DigitalOcean API token** using environment variable (recommended):
+   ```bash
+   export TF_VAR_do_token="your_digitalocean_api_token"
+   ```
+   
+   ⚠️ **NEVER** commit your API token to version control!
+
+3. Edit `terraform.tfvars` and configure:
+   - `do_ssh_key_fingerprint` - Your SSH key name or fingerprint from DigitalOcean
+   - `ssh_private_key_path` - Path to your local private SSH key
+   - `num_vault_nodes` - Number of Vault nodes (1-5)
+
+### Security Setup (Optional but Recommended)
+
+Enable git hooks to prevent accidental token commits:
+```bash
+git config core.hooksPath .githooks
+```
+
+This will activate pre-commit checks that prevent committing DigitalOcean API tokens.
 
 ## 🚀 Usage
 
@@ -68,7 +103,7 @@ You can override default behavior using `TF_VAR_*` variables:
 
 | Variable                         | Description                                                                 |
 |----------------------------------|-----------------------------------------------------------------------------|
-| `TF_VAR_do_token`                | DigitalOcean API token.                                                     |
+| `TF_VAR_do_token`                | DigitalOcean API token. **Required** - Use environment variable only!      |
 | `TF_VAR_do_region`               | The DigitalOcean region to deploy resources in. Default "fra1"              |
 | `TF_VAR_do_droplet_size`         | The size slug for the DigitalOcean Droplet. Default "s-1vcpu-2gb"           |
 | `TF_VAR_do_droplet_image`        | The image slug for the DigitalOcean Droplet. Deafult "ubuntu-22-04-x64"     |

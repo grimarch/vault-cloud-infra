@@ -114,18 +114,26 @@ remove-bootstrap:
 	@rm -fv .vault_bootstrap_done
 	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
 
+check-do-token:
+	@if [ -z "$(TF_VAR_do_token)" ]; then \
+		echo "❌ Error: TF_VAR_do_token environment variable is not set!"; \
+		echo "📝 Please set your DigitalOcean API token:"; \
+		echo "   export TF_VAR_do_token=\"your_digitalocean_api_token\""; \
+		exit 1; \
+	fi
+
 MY_NAME_IS := [vault-cloud-infra]
-deploy:
+deploy: check-do-token
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-deploy-debug:
+deploy-debug: check-do-token
 	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
 	@./scripts/deploy.sh --debug
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-destroy:
+destroy: check-do-token
 	@echo "$(MY_NAME_IS) Running destroy script..."
 	@terraform destroy -auto-approve
 	@read -p "⚠️  This will remove all Terraform configuration on your local machine. Are you sure you want to clean up Terraform configuration? (y/n): " confirm; \

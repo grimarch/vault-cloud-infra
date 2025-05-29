@@ -1,0 +1,27 @@
+# Example terraform.tfvars file for Vault Cloud Infra
+# Copy this file to terraform.tfvars and fill in your values
+
+# DigitalOcean API token - NEVER commit the actual token!
+# Use environment variable instead: export TF_VAR_do_token="your_token_here"
+# do_token = "your_token_here"
+
+# SSH key fingerprint from your DigitalOcean account
+do_ssh_key_fingerprint = "your_ssh_key_name_or_fingerprint"
+
+# Path to your private SSH key
+ssh_private_key_path = "/path/to/your/private/key"
+
+# Number of Vault nodes (1-5)
+num_vault_nodes = 3
+
+# Optional: DigitalOcean region (default: fra1)
+# do_region = "fra1"
+
+# Optional: Droplet size (default: s-1vcpu-2gb)
+# do_droplet_size = "s-1vcpu-2gb"
+
+# Optional: Droplet image (default: ubuntu-22-04-x64)
+# do_droplet_image = "ubuntu-22-04-x64"
+
+# Optional: Droplet name (default: vault-host)
+# do_droplet_name = "vault-host" 
