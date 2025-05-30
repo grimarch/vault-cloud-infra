@@ -123,13 +123,14 @@ check-do-token:
 	fi
 
 MY_NAME_IS := [vault-cloud-infra]
-deploy: check-do-token
+deploy: check-do-token check-ssh-vars
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-deploy-debug: check-do-token
+deploy-debug: check-do-token check-ssh-vars
 	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
+	@echo "$(MY_NAME_IS) Note: SSH path and port settings will be taken from terraform.tfvars"
 	@./scripts/deploy.sh --debug
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
@@ -169,5 +170,19 @@ archive-logs:
 	rm logs_to_archive.txt; \
 	echo "✅ Archive created: $${archive_name}"
 
+check-ssh-vars:
+	@missing_vars=""; \
+	for var in do_ssh_key_fingerprint ssh_private_key_path ssh_port allowed_ssh_cidr_blocks; do \
+	  env_val=$$(printenv $${var} || true); \
+	  tfvars_val=$$(grep -E "^$${var}[[:space:]]*=" terraform.tfvars 2>/dev/null | grep -v '^#' | head -n1 | cut -d'=' -f2- | tr -d ' "\n\r\t'); \
+	  if [ -z "$$env_val" ] && [ -z "$$tfvars_val" ]; then \
+	    missing_vars="$$missing_vars $${var}"; \
+	  fi; \
+	done; \
+	if [ -n "$$missing_vars" ]; then \
+	  echo "❌ ERROR: The following required variables are missing in both environment and terraform.tfvars:$$missing_vars"; \
+	  echo "   Please set them in terraform.tfvars or export as environment variables before proceeding."; \
+	  exit 1; \
+	fi
 
 .PHONY: all

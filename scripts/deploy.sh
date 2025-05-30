@@ -130,11 +130,9 @@ fi
 log_info "🔐 Setting up environment variables..."
 export FLOATING_IP
 export TF_VAR_droplet_ip="${FLOATING_IP}"
-export TF_VAR_ssh_private_key_path="/home/archie/.ssh/id_ed25519_personal"
 
 echo "FLOATING_IP=${FLOATING_IP}"
 echo "TF_VAR_droplet_ip=${TF_VAR_droplet_ip}"
-echo "TF_VAR_ssh_private_key_path=${TF_VAR_ssh_private_key_path}"
 
 log_info "🚧 Stage 2: Setting up Vault..."
 
@@ -154,8 +152,21 @@ terraform apply -auto-approve stage2.tfplan 2>&1 | tee -a "$STAGE2_APPLY_LOGFILE
 
 log_success "✅ Vault setup completed successfully!"
 
-# Get bootstrap token
-source ./scripts/utils/vault_token.sh
+
+# Get SSH port and key path through terraform output
+SSH_PORT=$(terraform output -raw ssh_port 2>/dev/null)
+SSH_KEY_PATH=$(terraform output -raw ssh_private_key_path 2>/dev/null)
+export TF_VAR_ssh_port="$SSH_PORT"
+export TF_VAR_ssh_private_key_path="$SSH_KEY_PATH"
+echo "TF_VAR_ssh_private_key_path=${TF_VAR_ssh_private_key_path}"
+echo "TF_VAR_ssh_port=${TF_VAR_ssh_port}"
+
+# Export variables to make them available for vault_token.sh
+export SSH_PORT
+export SSH_KEY_PATH
+
+# Call the script with the absolute path
+source "${PROJECT_ROOT}/scripts/utils/vault_token.sh"
 get_bootstrap_token
 
 # If still no token, exit
@@ -165,9 +176,9 @@ if [[ -z "${VAULT_TOKEN:-}" ]]; then
 fi
 
 log_info "👉 For access to Vault use:"
-log_info "   export VAULT_ADDR=https://${FLOATING_IP}:8200"
-log_info "   export VAULT_TOKEN=${VAULT_TOKEN}"
-log_info "   export VAULT_SKIP_VERIFY=true"
+    echo "   export VAULT_ADDR=https://${FLOATING_IP}:8200"
+    echo "   export VAULT_TOKEN=${VAULT_TOKEN}"
+    echo "   export VAULT_SKIP_VERIFY=true"
 
 echo ""
 log_info "📄 ==== Logs summary ===="

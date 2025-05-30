@@ -57,6 +57,10 @@ This project demonstrates how to automate the provisioning and initialization of
    - `do_ssh_key_fingerprint` - Your SSH key name or fingerprint from DigitalOcean
    - `ssh_private_key_path` - Path to your local private SSH key
    - `num_vault_nodes` - Number of Vault nodes (1-5)
+   - `ssh_port` - Optional: SSH port to use (default: 2222)
+
+   > ⚠️ **Important**: The `ssh_private_key_path` and `ssh_port` settings from `terraform.tfvars` will be 
+   > automatically used by deployment scripts. Do not hardcode these values in scripts.
 
 ### Security Setup (Optional but Recommended)
 
@@ -66,6 +70,22 @@ git config core.hooksPath .githooks
 ```
 
 This will activate pre-commit checks that prevent committing DigitalOcean API tokens.
+
+### Dynamic IP Management
+
+If you have a dynamic IP address, you'll need to update the allowed SSH IP addresses whenever your IP changes:
+
+1. Run the update script before connecting:
+   ```bash
+   ./scripts/update_ssh_access.sh
+   ```
+
+This script:
+- Automatically detects your current public IP address
+- Updates the `allowed_ssh_cidr_blocks` in terraform.tfvars
+- Applies the changes to the firewall rules (after confirmation)
+
+Alternatively, you can use a VPN with a static IP for connecting to your infrastructure.
 
 ## 🚀 Usage
 

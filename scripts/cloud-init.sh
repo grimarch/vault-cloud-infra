@@ -19,7 +19,7 @@ perform_network_checks
 # System updates and essential packages
 echo "Starting system updates and package installation..."
 apt-get update -yq
-apt-get install -yq curl unzip jq tree vim net-tools dnsutils docker.io docker-compose glances htop ncdu ca-certificates software-properties-common
+apt-get install -yq curl unzip jq tree vim net-tools dnsutils docker.io docker-compose glances htop ncdu ca-certificates software-properties-common fail2ban
 echo "✅ Essential packages (including docker.io) installed."
 
 # Add HashiCorp GPG key
@@ -39,6 +39,31 @@ apt-get install -yq vault
 echo "✅ Vault installed."
 
 echo "✅ Finished system updates and package installation (including Vault)."
+
+# Configure Fail2ban for SSH protection
+echo "Configuring Fail2ban for SSH protection..."
+cat > /etc/fail2ban/jail.local << EOL
+[sshd]
+enabled = true
+port = ${ssh_port}
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 5
+findtime = 600
+bantime = 3600
+EOL
+systemctl enable fail2ban
+systemctl restart fail2ban
+echo "✅ Fail2ban configured and started for SSH protection."
+
+# Configure SSH to use non-standard port and enhance security
+echo "Configuring SSH security settings..."
+sed -i "s/#Port 22/Port ${ssh_port}/" /etc/ssh/sshd_config
+sed -i "s/#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/" /etc/ssh/sshd_config
+sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
+sed -i "s/#MaxAuthTries 6/MaxAuthTries 3/" /etc/ssh/sshd_config
+systemctl restart sshd
+echo "✅ SSH configured to use non-standard port ${ssh_port} with enhanced security."
 
 # Docker post-installation steps
 echo "Configuring Docker group for 'ubuntu' and 'root' users..."

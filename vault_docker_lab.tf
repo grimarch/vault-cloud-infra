@@ -110,6 +110,7 @@ resource "null_resource" "deploy_docker_compose" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "5m"
   }
 
@@ -154,6 +155,7 @@ resource "null_resource" "active_node_init" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -185,6 +187,7 @@ resource "null_resource" "active_node_unseal" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -223,6 +226,7 @@ resource "null_resource" "unseal_standby_node" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "5m" 
   }
 
@@ -282,6 +286,7 @@ resource "null_resource" "enable_audit_device" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -314,6 +319,7 @@ resource "null_resource" "vault_bootstrap" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "5m" # Increased timeout for bootstrap script
   }
 
@@ -382,6 +388,7 @@ resource "null_resource" "download_vault_files" {
     host        = var.droplet_ip
     user        = "root"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -403,7 +410,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading Vault init file from remote server..."
-      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
       if [ $? -eq 0 ]; then
         echo "Vault init file downloaded to .vault_docker_lab_1_init"
       else
@@ -416,7 +423,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading bootstrap token file..."
-      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token ./.bootstrap-token
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token ./.bootstrap-token
       if [ $? -eq 0 ]; then
         echo "Bootstrap token file downloaded to ./.bootstrap-token"
       else

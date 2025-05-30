@@ -9,10 +9,24 @@
 do_ssh_key_fingerprint = "your_ssh_key_name_or_fingerprint"
 
 # Path to your private SSH key
+# Used when connecting to remote machines via Terraform and scripts
+# For example: "/home/user/.ssh/id_rsa" for Linux or "C:/Users/user/.ssh/id_rsa" for Windows
 ssh_private_key_path = "/path/to/your/private/key"
+
+# Optional: Non-standard SSH port (default: 2222)
+# Using a non-standard port increases security
+# Specify a port in the range 1024-65535
+# ssh_port = 2222
 
 # Number of Vault nodes (1-5)
 num_vault_nodes = 3
+
+# Security: List of CIDR blocks allowed to access SSH
+# For a single IP, use the format: ["123.123.123.123/32"]
+# For multiple IPs: ["123.123.123.123/32", "124.124.124.124/32"]
+# For a network: ["10.0.0.0/24"]
+# IMPORTANT: If you have a dynamic IP, run scripts/update_ssh_access.sh before connecting
+allowed_ssh_cidr_blocks = ["your_ip_address/32"]
 
 # Optional: DigitalOcean region (default: fra1)
 # do_region = "fra1"

@@ -25,6 +25,7 @@ resource "digitalocean_droplet" "vault_host" {
   user_data = templatefile("${path.module}/scripts/cloud-init.sh", {
     network_utils_content = file("${path.module}/scripts/utils/network.sh")
     docker_utils_content  = file("${path.module}/scripts/utils/docker.sh")
+    ssh_port              = var.ssh_port
   })
 
   # 1. Wait for cloud-init to create directories
@@ -39,6 +40,7 @@ resource "digitalocean_droplet" "vault_host" {
       user        = "root"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
+      port        = var.ssh_port
       timeout     = "10m" # Increased timeout for cloud-init completion
     }
   }
@@ -52,6 +54,7 @@ resource "digitalocean_droplet" "vault_host" {
       user        = "root"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
+      port        = var.ssh_port
     }
   }
 
@@ -67,13 +70,14 @@ resource "digitalocean_droplet" "vault_host" {
       user        = "root"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
+      port        = var.ssh_port
     }
   }
 
   # 4. Provisioners to copy Vault configurations for all nodes
   # These will run after the CA cert is installed and directories are confirmed to exist.
   provisioner "file" {
-    source      = "${path.module}/containers/" # ВАЖНО: добавлена косая черта и path.module
+    source      = "${path.module}/containers/" # IMPORTANT: added slash and path.module
     destination = "/opt/vault_lab/containers"
 
     connection {
@@ -81,6 +85,7 @@ resource "digitalocean_droplet" "vault_host" {
       user        = "root"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
+      port        = var.ssh_port
     }
   }
 
@@ -131,8 +136,8 @@ resource "digitalocean_firewall" "vault_firewall" {
   # Inbound rules
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "22" # SSH
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    port_range       = var.ssh_port # SSH on non-standard port
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
@@ -179,4 +184,14 @@ resource "digitalocean_firewall" "vault_firewall" {
   }
 
   tags = ["vault-lab", "${var.project_name}"]
+}
+
+output "ssh_port" {
+  description = "The port on which SSH service should listen."
+  value       = var.ssh_port
+}
+
+output "ssh_private_key_path" {
+  description = "Path to the SSH private key used for connecting to the Droplet."
+  value       = var.ssh_private_key_path
 } 
