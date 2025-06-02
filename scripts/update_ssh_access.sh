@@ -60,5 +60,5 @@ if [[ "$APPLY" =~ ^[Yy]$ ]]; then
     echo "scp -P ${SSH_PORT} -i ${SSH_KEY_PATH} somefile root@${DROPLET_IP}:/tmp/"
 
 else
-    echo "❌ Changes not applied"
+    echo "❌ Changes for droplet firewall not applied"
 fi

@@ -123,18 +123,18 @@ check-do-token:
 	fi
 
 MY_NAME_IS := [vault-cloud-infra]
-deploy: check-do-token check-ssh-vars
+deploy: check-do-token check-ssh-vars check-public-ip
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-deploy-debug: check-do-token check-ssh-vars
+deploy-debug: check-do-token check-ssh-vars check-public-ip
 	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
 	@echo "$(MY_NAME_IS) Note: SSH path and port settings will be taken from terraform.tfvars"
 	@./scripts/deploy.sh --debug
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-destroy: check-do-token
+destroy: check-do-token check-public-ip
 	@echo "$(MY_NAME_IS) Running destroy script..."
 	@terraform destroy -auto-approve
 	@read -p "⚠️  This will remove all Terraform configuration on your local machine. Are you sure you want to clean up Terraform configuration? (y/n): " confirm; \
@@ -184,5 +184,21 @@ check-ssh-vars:
 	  echo "   Please set them in terraform.tfvars or export as environment variables before proceeding."; \
 	  exit 1; \
 	fi
+
+check-public-ip:
+	@current_ip=$$(curl -s https://api.ipify.org); \
+	tf_ips=$$(grep -E '^allowed_ssh_cidr_blocks' terraform.tfvars | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'); \
+	match_found=0; \
+	for ip in $$tf_ips; do \
+	  if [ "$$current_ip" = "$$ip" ]; then match_found=1; fi; \
+	done; \
+	if [ "$$match_found" = "1" ]; then \
+	  echo "✅ Your public IP ($$current_ip) is allowed."; \
+	else \
+	  echo "❌ Your IP ($$current_ip) is not listed in allowed_ssh_cidr_blocks! Add it to terraform.tfvars or run ./update_ssh_access.sh"; \
+	  exit 1; \
+	fi
+
+
 
 .PHONY: all
