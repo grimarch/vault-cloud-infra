@@ -87,7 +87,7 @@ variable "project_name" {
 variable "do_droplet_name" {
   description = "Name for the DigitalOcean Droplet."
   type        = string
-  default     = "vault-host"
+  default     = "vault-cloud-infra"
 }
 
 variable "ssh_private_key_path" {
@@ -123,4 +123,10 @@ variable "ssh_port" {
   description = "The port on which SSH service should listen."
   type        = number
   default     = 22
+}
+
+variable "emergency_ssh_access" {
+  description = "Enable emergency global SSH access to the Droplet."
+  type        = bool
+  default     = false
 }

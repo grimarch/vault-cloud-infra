@@ -25,6 +25,7 @@ resource "digitalocean_droplet" "vault_host" {
   user_data = templatefile("${path.module}/scripts/cloud-init.sh", {
     network_utils_content = file("${path.module}/scripts/utils/network.sh")
     docker_utils_content  = file("${path.module}/scripts/utils/docker.sh")
+    agent_utils_content   = file("${path.module}/scripts/utils/agent.sh")
     ssh_port              = var.ssh_port
   })
 
@@ -139,6 +140,17 @@ resource "digitalocean_firewall" "vault_firewall" {
     port_range       = var.ssh_port # SSH on non-standard port
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
+
+  # Enable emergency global SSH access if flag is true
+  dynamic "inbound_rule" {
+    for_each = var.emergency_ssh_access ? [1] : []
+    content {
+      protocol         = "tcp"
+      port_range       = var.ssh_port
+      source_addresses = ["0.0.0.0/0"]
+    }
+  }
+
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8200" # Vault API vault_docker_lab_1

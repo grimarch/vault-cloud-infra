@@ -11,6 +11,10 @@ ${network_utils_content}
 ${docker_utils_content}
 # --- END INJECTED DOCKER UTILS ---
 
+# --- BEGIN INJECTED AGENT UTILS ---
+${agent_utils_content}
+# --- END INJECTED AGENT UTILS ---
+
 # --- Main script execution ---
 
 # Perform network checks first
@@ -49,8 +53,8 @@ port = ${ssh_port}
 filter = sshd
 logpath = /var/log/auth.log
 maxretry = 5
-findtime = 600
 bantime = 3600
+findtime = 600
 EOL
 systemctl enable fail2ban
 systemctl restart fail2ban
@@ -61,9 +65,17 @@ echo "Configuring SSH security settings..."
 sed -i "s/#Port 22/Port ${ssh_port}/" /etc/ssh/sshd_config
 sed -i "s/#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/" /etc/ssh/sshd_config
 sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
-sed -i "s/#MaxAuthTries 6/MaxAuthTries 3/" /etc/ssh/sshd_config
+sed -i "s/#MaxAuthTries 6/MaxAuthTries 6/" /etc/ssh/sshd_config  # Keep default 6 for Agent compatibility
+
+# Configure DigitalOcean Agent for custom SSH port
+configure_do_agent "${ssh_port}"
+
+# Restart SSH first, then Agent (proper order)
 systemctl restart sshd
-echo "✅ SSH configured to use non-standard port ${ssh_port} with enhanced security."
+echo "✅ SSH configured to use port ${ssh_port} with enhanced security."
+
+# Restart and verify DigitalOcean Agent
+restart_and_verify_do_agent "$AGENT_SERVICE_UPDATED"
 
 # Docker post-installation steps
 echo "Configuring Docker group for 'ubuntu' and 'root' users..."

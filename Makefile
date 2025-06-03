@@ -123,12 +123,12 @@ check-do-token:
 	fi
 
 MY_NAME_IS := [vault-cloud-infra]
-deploy: check-do-token check-ssh-vars check-public-ip
+deploy: check-do-token check-ssh-vars check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-deploy-debug: check-do-token check-ssh-vars check-public-ip
+deploy-debug: check-do-token check-ssh-vars check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
 	@echo "$(MY_NAME_IS) Note: SSH path and port settings will be taken from terraform.tfvars"
 	@./scripts/deploy.sh --debug
@@ -172,7 +172,7 @@ archive-logs:
 
 check-ssh-vars:
 	@missing_vars=""; \
-	for var in do_ssh_key_fingerprint ssh_private_key_path ssh_port allowed_ssh_cidr_blocks; do \
+	for var in do_ssh_key_fingerprint ssh_private_key_path allowed_ssh_cidr_blocks; do \
 	  env_val=$$(printenv $${var} || true); \
 	  tfvars_val=$$(grep -E "^$${var}[[:space:]]*=" terraform.tfvars 2>/dev/null | grep -v '^#' | head -n1 | cut -d'=' -f2- | tr -d ' "\n\r\t'); \
 	  if [ -z "$$env_val" ] && [ -z "$$tfvars_val" ]; then \
@@ -195,10 +195,59 @@ check-public-ip:
 	if [ "$$match_found" = "1" ]; then \
 	  echo "✅ Your public IP ($$current_ip) is allowed."; \
 	else \
-	  echo "❌ Your IP ($$current_ip) is not listed in allowed_ssh_cidr_blocks! Add it to terraform.tfvars or run ./update_ssh_access.sh"; \
+	  echo "❌ Your IP ($$current_ip) is not listed in allowed_ssh_cidr_blocks! Add it to terraform.tfvars or run ./scripts/update_ssh_access.sh"; \
 	  exit 1; \
 	fi
 
+emergency-ssh-on: check-do-token check-ssh-vars check-public-ip
+	@read -p "Are you sure you want to enable emergency SSH access? It will allow SSH access from any IP address. (y/n): " confirm; \
+	if [ "$$confirm" != "y" ]; then \
+		echo "🚫 Emergency SSH access cancelled"; \
+		exit 1; \
+	fi
+	@echo "🔓 Enabling emergency SSH access from 0.0.0.0/0..."
+	@if grep -q '^emergency_ssh_access' terraform.tfvars; then \
+	  sed -i 's/^emergency_ssh_access *= *.*/emergency_ssh_access = true/' terraform.tfvars; \
+	else \
+	  echo 'emergency_ssh_access = true' >> terraform.tfvars; \
+	fi
+	@terraform apply -target=digitalocean_firewall.vault_firewall -auto-approve
+	@echo ""
+	@echo "📌 If SSH is unavailable, use the Droplet Console:"
+	@echo "👉 https://cloud.digitalocean.com/droplets → Console"
+	@echo ""
+	@echo "🛑 Don't forget to run: make emergency-ssh-off"
+
+emergency-ssh-off: check-do-token check-ssh-vars check-public-ip
+	@read -p "Are you sure you want to disable emergency SSH access? (y/n): " confirm; \
+	if [ "$$confirm" != "y" ]; then \
+		echo "🚫 Emergency SSH access disabled"; \
+		exit 1; \
+	fi
+	@echo "🔐 Disabling emergency SSH access..."
+	@if grep -q '^emergency_ssh_access' terraform.tfvars; then \
+	  sed -i 's/^emergency_ssh_access *= *.*/emergency_ssh_access = false/' terraform.tfvars; \
+	else \
+	  echo 'emergency_ssh_access = false' >> terraform.tfvars; \
+	fi
+	@terraform apply -target=digitalocean_firewall.vault_firewall -auto-approve
+	@echo ""
+	@echo "🔒 Emergency SSH access disabled."
+
+check-emergency-enabled:
+	@value=$$(grep -E '^emergency_ssh_access *= *true' terraform.tfvars || true); \
+	if [ -n "$$value" ]; then \
+	  echo "🟠 emergency_ssh_access is ENABLED"; \
+	  echo "⚠️  Your server will be opened to the world (0.0.0.0/0)."; \
+	  echo "💡 You can disable it with: make emergency-ssh-off"; \
+	  read -p "❓ Continue anyway? (y/n): " confirm; \
+	  if [ "$$confirm" != "y" ]; then \
+	    echo "🚫 Aborted."; \
+	    exit 1; \
+	  fi; \
+	else \
+	  echo "🟢 emergency_ssh_access is DISABLED (restricted SSH)"; \
+	fi
 
 
 .PHONY: all
