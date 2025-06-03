@@ -181,42 +181,66 @@ resource "digitalocean_firewall" "vault_firewall" {
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8200" # Vault API vault_docker_lab_1
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8220" # Vault API vault_docker_lab_2
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8230" # Vault API vault_docker_lab_3
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8240" # Vault API vault_docker_lab_4
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
     port_range       = "8250" # Vault API vault_docker_lab_5
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   # Add 8201 if it needs to be exposed for external cluster communication, 
   # but for single-droplet setup, inter-container communication via Docker network is typical.
 
-  # Outbound rules (allow all by default, can be restricted if needed)
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
+  # Outbound rules (restricted to essential services only)
+  # DNS resolution
   outbound_rule {
     protocol              = "udp"
-    port_range            = "1-65535"
+    port_range            = "53"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
+  outbound_rule {
+    protocol              = "tcp"
+    port_range            = "53"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  
+  # HTTP for package updates and Docker registry
+  outbound_rule {
+    protocol              = "tcp"
+    port_range            = "80"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  
+  # HTTPS for secure connections and Docker registry
+  outbound_rule {
+    protocol              = "tcp"
+    port_range            = "443"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  
+  # NTP for time synchronization
+  outbound_rule {
+    protocol              = "udp"
+    port_range            = "123"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+  
+  # ICMP for network diagnostics (ping, traceroute)
   outbound_rule {
     protocol              = "icmp"
     destination_addresses = ["0.0.0.0/0", "::/0"]
