@@ -29,7 +29,7 @@ get_bootstrap_token() {
   # Check and download init file
   if [ ! -f "$init_file" ]; then
     log_info "🔄 Local $init_file not found, downloading from remote server..."
-    scp -P "${TF_VAR_ssh_port}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" root@"${FLOATING_IP}":/opt/vault_lab/"$init_file" "$init_file"
+    scp -P "${TF_VAR_ssh_port}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" vaultadmin@"${FLOATING_IP}":/opt/vault_lab/"$init_file" "$init_file"
     if [ $? -eq 0 ]; then
       log_success "✅ Downloaded $init_file from remote server"
     else
@@ -41,7 +41,7 @@ get_bootstrap_token() {
 
   # Try to get token
   log_info "🔐 Retrieving bootstrap token..."
-  scp -P "${TF_VAR_ssh_port}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" root@"${FLOATING_IP}":/opt/vault_lab/"$init_file" "$init_file"
+  scp -P "${TF_VAR_ssh_port}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" vaultadmin@"${FLOATING_IP}":/opt/vault_lab/"$init_file" "$init_file"
   if [ -f "$token_file" ]; then
     log_info "📄 Found local bootstrap token file, checking content..."
     local local_token
@@ -59,20 +59,20 @@ get_bootstrap_token() {
 
   # Get token from remote server
   local ssh_check
-  ssh_check=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" root@"${FLOATING_IP}" "[ -f /opt/vault_lab/backups/bootstrap-token ] && echo exists || echo missing")
+  ssh_check=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" vaultadmin@"${FLOATING_IP}" "[ -f /opt/vault_lab/backups/bootstrap-token ] && echo exists || echo missing")
   if [[ "$ssh_check" == "missing" ]]; then
     log_error "❌ File /opt/vault_lab/backups/bootstrap-token does not exist on the remote server"
     log_info "💡 Checking directory structure..."
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" root@"${FLOATING_IP}" "ls -la /opt/vault_lab/backups/ || echo 'Directory does not exist'"
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" vaultadmin@"${FLOATING_IP}" "ls -la /opt/vault_lab/backups/ || echo 'Directory does not exist'"
     return 1
   fi
 
   local remote_content
-  remote_content=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" root@"${FLOATING_IP}" "cat /opt/vault_lab/backups/bootstrap-token")
+  remote_content=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" vaultadmin@"${FLOATING_IP}" "cat /opt/vault_lab/backups/bootstrap-token")
   log_info "📄 Remote bootstrap token file content: ${remote_content}"
 
   local remote_token
-  remote_token=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" root@"${FLOATING_IP}" "grep 'Bootstrap Token:' /opt/vault_lab/backups/bootstrap-token | awk '{print \\$3}'")
+  remote_token=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "${TF_VAR_ssh_private_key_path}" -p "${TF_VAR_ssh_port}" vaultadmin@"${FLOATING_IP}" "grep 'Bootstrap Token:' /opt/vault_lab/backups/bootstrap-token | awk '{print \\$3}'")
 
   if [[ -n "$remote_token" ]]; then
     log_success "✅ Successfully retrieved bootstrap token from remote server: ${remote_token}"

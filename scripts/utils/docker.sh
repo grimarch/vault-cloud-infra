@@ -50,7 +50,7 @@ verify_docker_setup() {
     echo "[Docker Utils] ERROR: Docker socket not found at /var/run/docker.sock!"
     exit 1
   fi
-  
+
   # Test Docker functionality
   local max_attempts_version=12 # Approx 60 seconds
   local attempt_version=1

@@ -134,7 +134,7 @@ deploy-debug: check-do-token check-ssh-vars check-public-ip check-emergency-enab
 	@./scripts/deploy.sh --debug
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-destroy: check-do-token check-public-ip
+destroy: check-do-token check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running destroy script..."
 	@terraform destroy -auto-approve
 	@read -p "⚠️  This will remove all Terraform configuration on your local machine. Are you sure you want to clean up Terraform configuration? (y/n): " confirm; \

@@ -63,7 +63,7 @@ echo "✅ Fail2ban configured and started for SSH protection."
 # Configure SSH to use non-standard port and enhance security
 echo "Configuring SSH security settings..."
 sed -i "s/#Port 22/Port ${ssh_port}/" /etc/ssh/sshd_config
-sed -i "s/#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/" /etc/ssh/sshd_config
+sed -i "s/^#*PermitRootLogin.*/PermitRootLogin no/" /etc/ssh/sshd_config
 sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
 sed -i "s/#MaxAuthTries 6/MaxAuthTries 6/" /etc/ssh/sshd_config  # Keep default 6 for Agent compatibility
 
@@ -76,6 +76,31 @@ echo "✅ SSH configured to use port ${ssh_port} with enhanced security."
 
 # Restart and verify DigitalOcean Agent
 restart_and_verify_do_agent "$AGENT_SERVICE_UPDATED"
+
+# Create vaultadmin user for secure deployment
+echo "Creating vaultadmin user for deployment..."
+# Create user with home directory and bash shell
+useradd -m -s /bin/bash vaultadmin
+
+# Add SSH authorized keys for vaultadmin (copy from root)
+mkdir -p /home/vaultadmin/.ssh
+cp /root/.ssh/authorized_keys /home/vaultadmin/.ssh/
+chown -R vaultadmin:vaultadmin /home/vaultadmin/.ssh
+chmod 700 /home/vaultadmin/.ssh
+chmod 600 /home/vaultadmin/.ssh/authorized_keys
+
+# Configure sudo access for vaultadmin
+cat > /etc/sudoers.d/vaultadmin << EOL
+# Allow vaultadmin to execute all commands without password
+vaultadmin ALL=(ALL) NOPASSWD:ALL
+EOL
+chmod 440 /etc/sudoers.d/vaultadmin
+
+# Add vaultadmin to necessary groups
+usermod -aG docker vaultadmin
+usermod -aG systemd-journal vaultadmin
+
+echo "✅ vaultadmin user created with sudo privileges."
 
 # Docker post-installation steps
 echo "Configuring Docker group for 'ubuntu' and 'root' users..."
@@ -97,6 +122,7 @@ echo "✅ Docker successfully configured and verified."
 # Create base directory for Vault configurations and data on the Droplet
 echo "Creating base directories for Vault..."
 mkdir -p /opt/vault_lab/containers
+chown -R vaultadmin:vaultadmin /opt/vault_lab
 chmod -R 755 /opt/vault_lab
 
 # Create subdirectories for each Vault instance
@@ -106,7 +132,7 @@ for i in {1..5}
     mkdir -p /opt/vault_lab/containers/vault_docker_lab_"$${i}"/logs
     mkdir -p /opt/vault_lab/containers/vault_docker_lab_"$${i}"/config
     mkdir -p /opt/vault_lab/containers/vault_docker_lab_"$${i}"/certs
-    chown -R root:root /opt/vault_lab/containers/vault_docker_lab_"$${i}"
+    chown -R vaultadmin:vaultadmin /opt/vault_lab/containers/vault_docker_lab_"$${i}"
     chmod -R 755 /opt/vault_lab/containers/vault_docker_lab_"$${i}"
   done
 echo "✅ Vault directories created."

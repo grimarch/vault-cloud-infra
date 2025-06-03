@@ -95,7 +95,7 @@ terraform init -upgrade || {
 log_info "📝 Planning and applying infrastructure in DigitalOcean..."
 STAGE1_PLAN_LOGFILE="${LOGDIR}/${TIMESTAMP}-terraform-plan-stage1.log"
 terraform plan -out=stage1.tfplan \
-  -target=digitalocean_droplet.vault_host \
+  -target=digitalocean_droplet.vault_cloud_infra \
   -target=digitalocean_floating_ip.vault_fip \
   -target=digitalocean_floating_ip_assignment.vault_fip_assign \
   -target=local_file.vault_init_placeholder \

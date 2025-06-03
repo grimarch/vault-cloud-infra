@@ -30,6 +30,8 @@ This project demonstrates how to automate the provisioning and initialization of
 - ✅ Ready-to-use scripts for development, testing, or PoC
 - ✅ Enhanced security with docker-compose and local socket access only
 - ✅ Automated Vault cluster configuration with raft storage
+- ✅ Secure non-root deployment using dedicated `vaultadmin` user
+- ✅ Modular cloud-init: DigitalOcean droplet-agent is configured via a dedicated utility script (`scripts/utils/agent.sh`) for safe SSH Console access
 
 ## 🔐 Configuration
 
@@ -87,6 +89,42 @@ This script:
 
 Alternatively, you can use a VPN with a static IP for connecting to your infrastructure.
 
+### SSH Access
+
+The deployment creates a dedicated `vaultadmin` user for secure, non-root access:
+- SSH root login is completely disabled for security
+- All operations are performed via the `vaultadmin` user with sudo privileges
+- SSH connections use the non-standard port configured in terraform.tfvars
+
+To connect to your instance:
+```bash
+ssh -i <your_private_key> -p <ssh_port> vaultadmin@<droplet_ip>
+```
+
+#### DigitalOcean Console (droplet-agent) Security
+
+- Cloud-init now configures the DigitalOcean droplet-agent using a dedicated utility script:
+
+```bash
+scripts/utils/agent.sh
+```
+
+This script automatically configures the droplet-agent to work with a custom SSH port and restarts the service to ensure the DigitalOcean Console remains functional even with non-standard SSH settings. All logic is moved to a separate, template-injected module, similar to the network and docker utilities.
+
+**Benefits:**
+- Secure automation of droplet-agent configuration
+- Flexible support for any SSH port
+- Simplified audit and maintenance of cloud-init
+
+#### Emergency SSH Access Control
+
+For disaster recovery or troubleshooting, you can temporarily enable SSH access from any IP address using the following Makefile targets:
+
+- `make emergency-ssh-on` — Enables emergency SSH access from `0.0.0.0/0` (all IPs) by updating the firewall and Terraform configuration. **Use only if you lose access via your allowed IPs!**
+- `make emergency-ssh-off` — Disables emergency SSH access and restores the firewall to only allow SSH from your configured `allowed_ssh_cidr_blocks`.
+
+Both commands will prompt for confirmation before making changes. Always remember to disable emergency access after resolving your issue to maintain security.
+
 ## 🚀 Usage
 
 The `Makefile` simplifies deployment and cleanup operations. Below are the key commands:
@@ -128,7 +166,7 @@ You can override default behavior using `TF_VAR_*` variables:
 | `TF_VAR_do_droplet_size`         | The size slug for the DigitalOcean Droplet. Default "s-1vcpu-2gb"           |
 | `TF_VAR_do_droplet_image`        | The image slug for the DigitalOcean Droplet. Deafult "ubuntu-22-04-x64"     |
 | `TF_VAR_do_ssh_key_fingerprint`  | The fingerprint of the SSH key to add to the Droplet.                       |
-| `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-host"                     |
+| `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-cloud-infra"                     |
 
 
 ## 🛠 Tech Stack
@@ -373,126 +411,3 @@ Vault Docker Lab tries to keep current and offer the latest available Vault Dock
 ```shell
 TF_VAR_vault_version=1.11.0 make
 ```
-
-> **Tip**: Vault versions >= 1.11.0 are recommended for ideal Integrated Storage support.
-
-### Run Vault Enterprise
-
-Vault Docker Lab runs the Vault community edition by default, but you can also run the Enterprise edition.
-
-> **NOTE**: You must have an [Enterprise license](https://www.hashicorp.com/products/vault/pricing) to run the Vault Enterprise image.
-
-Export the `TF_VAR_vault_license` environment variable with your Vault Enterprise license string as the value. For example:
-
-```shell
-export TF_VAR_vault_license=02E2VCBORGUIRSVJVCECNSNI...
-```
-
-Export the `TF_VAR_vault_edition` environment variable to specify `vault-enterprise` as the value.
-
-```shell
-export TF_VAR_vault_edition=vault-enterprise
-```
-
-Make Vault Docker Lab.
-
-```shell
-make
-```
-
-### Set the Vault server log level
-
-The default Vault server log level is Info, but you can specify another log level like `Debug`, with the `TF_VAR_vault_log_level` environment variable like this:
-
-```shell
-TF_VAR_vault_log_level=Debug make
-```
-
-### Stage a cluster
-
-By default, vault-docker-lab automatically initializes and unseals Vault. If you'd rather perform these steps yourself, you can specify that they're skipped.
-
-Stage a cluster.
-
-```shell
-make stage
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Initializing Terraform workspace ...Done.
-[vault-docker-lab] Applying Terraform configuration ...Done.
-[vault-docker-lab] Export VAULT_ADDR for the active node: export VAULT_ADDR=https://127.0.0.1:8200
-[vault-docker-lab] Vault is not initialized or unsealed. You must initialize and unseal Vault prior to use.
-```
-
-### Docker resource usage
-
-The screenshot shows a Vault Docker Lab that has been up but idle for 25 minutes.
-
-<img width="732" alt="2023-09-01_14-04-54" src="https://github.com/hashicorp-education/learn-vault-docker-lab/assets/77563/5ff76eed-7c70-4bdd-bca2-3a478d878b10">
-
-### Cleanup
-
-To clean up Docker containers and all generated artifacts, **including audit device log files**:
-
-```shell
-make clean
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Destroying Terraform configuration ...Done.
-[vault-docker-lab] Removing artifacts created by Vault Docker Lab ...Done.
-```
-
-To clean up **everything** including Terraform runtime configuration and state:
-
-```shell
-make cleanest
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Destroying Terraform configuration ...Done.
-[vault-docker-lab] Removing artifacts created by Vault Docker Lab ...Done.
-[vault-docker-lab] Removing all Terraform runtime configuration and state ...Done.
-```
-
-To remove the CA certificate from your OS trust store:
-
-- For macOS:
-
-  ```shell
-  sudo security delete-certificate -c "vault-docker-lab Intermediate Authority"
-  # no output expected
-  ```
-
-  - You will be prompted for your user password; enter it to add the certificate.
-
-- For Linux:
-
-  - Follow the documentation for your specific Linux distribution to remove the certificate.
-
-Unset related environment variables.
-
-```shell
-unset TF_VAR_vault_edition F_VAR_vault_license TF_VAR_vault_version VAULT_ADDR
-```
-
-## Help and reference
-
-A great resource for learning more about Vault is the [HashiCorp Developer](https://developer.hashicorp.com) site, which has a nice [Vault tutorial library](https://developer.hashicorp.com/tutorials/library?product=vault) available.
-
-If you are new to Vault, check out the **Get Started** tutorial series:
-
-- [CLI Quick Start](https://developer.hashicorp.com/vault/tutorials/getting-started)
-- [HCP Vault Quick Start](https://developer.hashicorp.com/vault/tutorials/cloud)
-- [UI Quick Start](https://developer.hashicorp.com/vault/tutorials/getting-started-ui)
-
-The tutorial library also has a wide range of intermediate and advanced tutorials with integrated hands on labs.
-
-The [API documentation](https://developer.hashicorp.com/vault/api-docs) and [product documentation](https://developer.hashicorp.com/vault/docs) are also great learning resources.

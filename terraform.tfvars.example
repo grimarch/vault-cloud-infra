@@ -37,5 +37,5 @@ allowed_ssh_cidr_blocks = ["your_ip_address/32"]
 # Optional: Droplet image (default: ubuntu-22-04-x64)
 # do_droplet_image = "ubuntu-22-04-x64"
 
-# Optional: Droplet name (default: vault-host)
-# do_droplet_name = "vault-host" 
+# Optional: Droplet name (default: vault-cloud-infra)
+# do_droplet_name = "vault-cloud-infra" 

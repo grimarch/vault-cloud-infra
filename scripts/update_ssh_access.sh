@@ -56,8 +56,8 @@ if [[ "$APPLY" =~ ^[Yy]$ ]]; then
     DROPLET_IP=$(terraform output -raw droplet_public_ip 2>/dev/null)
 
     echo "📋 Now you can connect via SSH using:"
-    echo "ssh -i ${SSH_KEY_PATH} -p ${SSH_PORT} root@${DROPLET_IP}"
-    echo "scp -P ${SSH_PORT} -i ${SSH_KEY_PATH} somefile root@${DROPLET_IP}:/tmp/"
+    echo "ssh -i ${SSH_KEY_PATH} -p ${SSH_PORT} vaultadmin@${DROPLET_IP}"
+    echo "scp -P ${SSH_PORT} -i ${SSH_KEY_PATH} somefile vaultadmin@${DROPLET_IP}:/tmp/"
 
 else
     echo "❌ Changes for droplet firewall not applied"

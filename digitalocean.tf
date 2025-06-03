@@ -16,7 +16,7 @@ data "digitalocean_ssh_key" "existing_key" {
                                    # If user provides fingerprint, they must ensure a key with that NAME (fingerprint as name) exists.
 }
 
-resource "digitalocean_droplet" "vault_host" {
+resource "digitalocean_droplet" "vault_cloud_infra" {
   image     = var.do_droplet_image
   name      = var.do_droplet_name
   region    = var.do_region
@@ -38,21 +38,47 @@ resource "digitalocean_droplet" "vault_host" {
     ]
     connection {
       type        = "ssh"
-      user        = "root"
-      private_key = file(var.ssh_private_key_path)
+      user        = "vaultadmin"
       host        = self.ipv4_address
+      private_key = file(var.ssh_private_key_path)
+      timeout     = "20m"
       port        = var.ssh_port
-      timeout     = "10m" # Increased timeout for cloud-init completion
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = ["sudo tail -5 /var/log/cloud-init-output.log"]
+    connection {
+      type        = "ssh"
+      user        = "vaultadmin"
+      host        = self.ipv4_address
+      private_key = file(var.ssh_private_key_path)
+      timeout     = "20m"
+      port        = var.ssh_port
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "if command -v docker &> /dev/null; then docker --version && echo 'Docker is installed.'; else echo 'ERROR: Docker is NOT installed!'; exit 1; fi"
+    ]
+    connection {
+      type        = "ssh"
+      user        = "vaultadmin"
+      host        = self.ipv4_address
+      private_key = file(var.ssh_private_key_path)
+      timeout     = "20m"
+      port        = var.ssh_port
     }
   }
 
   # 2. Upload CA certificate to its final intended place (as cloud-init would have used)
   provisioner "file" {
     source      = "containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem" # Assuming this is your CA cert
-    destination = "/usr/local/share/ca-certificates/vault_docker_lab_ca.crt"
+    destination = "/tmp/vault_docker_lab_ca.crt"
     connection {
       type        = "ssh"
-      user        = "root"
+      user        = "vaultadmin"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
       port        = var.ssh_port
@@ -63,12 +89,13 @@ resource "digitalocean_droplet" "vault_host" {
   provisioner "remote-exec" {
     inline = [
       "echo 'Installing Vault CA certificate...'",
-      "update-ca-certificates",
+      "sudo mv /tmp/vault_docker_lab_ca.crt /usr/local/share/ca-certificates/vault_docker_lab_ca.crt",
+      "sudo update-ca-certificates",
       "echo 'Vault CA certificate installed.'",
     ]
     connection {
       type        = "ssh"
-      user        = "root"
+      user        = "vaultadmin"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
       port        = var.ssh_port
@@ -83,7 +110,7 @@ resource "digitalocean_droplet" "vault_host" {
 
     connection {
       type        = "ssh"
-      user        = "root"
+      user        = "vaultadmin"
       private_key = file(var.ssh_private_key_path)
       host        = self.ipv4_address
       port        = var.ssh_port
@@ -104,17 +131,17 @@ resource "digitalocean_droplet" "vault_host" {
 // - Let's Encrypt integration is out of scope for this initial deployment phase.
 
 resource "digitalocean_floating_ip" "vault_fip" {
-  region     = digitalocean_droplet.vault_host.region
+  region     = digitalocean_droplet.vault_cloud_infra.region
 }
 
 resource "digitalocean_floating_ip_assignment" "vault_fip_assign" {
   ip_address = digitalocean_floating_ip.vault_fip.ip_address
-  droplet_id = digitalocean_droplet.vault_host.id
+  droplet_id = digitalocean_droplet.vault_cloud_infra.id
 }
 
 output "droplet_public_ip" {
   description = "Public IP address of the Vault host Droplet."
-  value       = digitalocean_droplet.vault_host.ipv4_address
+  value       = digitalocean_droplet.vault_cloud_infra.ipv4_address
 }
 
 output "floating_ip_address" {
@@ -132,7 +159,7 @@ output "floating_ip_address" {
 resource "digitalocean_firewall" "vault_firewall" {
   name = "${var.project_name}-vault-firewall"
 
-  droplet_ids = [digitalocean_droplet.vault_host.id]
+  droplet_ids = [digitalocean_droplet.vault_cloud_infra.id]
 
   # Inbound rules
   inbound_rule {
