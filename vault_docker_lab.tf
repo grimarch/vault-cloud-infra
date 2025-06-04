@@ -35,6 +35,40 @@ resource "local_file" "vault_init_placeholder" {
 }
 
 # -----------------------------------------------------------------------
+# SSH Host Key Management for Security
+# -----------------------------------------------------------------------
+
+# Collect SSH host key from the remote server for secure connections
+resource "null_resource" "collect_ssh_hostkey" {
+  depends_on = [digitalocean_droplet.vault_cloud_infra]
+
+  triggers = {
+    droplet_id = digitalocean_droplet.vault_cloud_infra.id
+    ssh_port   = var.ssh_port
+    droplet_ip = var.droplet_ip
+  }
+
+  # Create SSH known_hosts file with the server's host key
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Collecting SSH host key for secure connections..."
+      mkdir -p ./.ssh_temp
+      ssh-keyscan -p ${var.ssh_port} ${var.droplet_ip} > ./.ssh_temp/known_hosts 2>/dev/null || {
+        echo "Warning: Failed to collect SSH host key, retrying..."
+        sleep 5
+        ssh-keyscan -p ${var.ssh_port} ${var.droplet_ip} > ./.ssh_temp/known_hosts 2>/dev/null
+      }
+      if [ -s ./.ssh_temp/known_hosts ]; then
+        echo "SSH host key collected successfully"
+      else
+        echo "Error: Failed to collect SSH host key"
+        exit 1
+      fi
+    EOT
+  }
+}
+
+# -----------------------------------------------------------------------
 # Provider configuration
 # -----------------------------------------------------------------------
 
@@ -375,12 +409,14 @@ resource "null_resource" "all_nodes_configured_marker" {
 # Resource for downloading necessary files from remote server
 resource "null_resource" "download_vault_files" {
   depends_on = [
-    null_resource.all_nodes_configured_marker
+    null_resource.all_nodes_configured_marker,
+    null_resource.collect_ssh_hostkey
   ]
 
   triggers = {
     # Re-run when the configuration is complete
     nodes_configured = null_resource.all_nodes_configured_marker.id
+    ssh_hostkey_collected = null_resource.collect_ssh_hostkey.id
   }
 
   connection {
@@ -411,7 +447,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading Vault init file from remote server..."
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
       if [ $? -eq 0 ]; then
         echo "Vault init file downloaded to .vault_docker_lab_1_init"
       else
@@ -424,7 +460,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading encrypted bootstrap token file..."
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token.enc ./bootstrap-token.enc
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token.enc ./bootstrap-token.enc
       if [ $? -eq 0 ]; then
         echo "Encrypted bootstrap token file downloaded to ./bootstrap-token.enc"
       else
@@ -437,7 +473,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading encrypted admin credentials file..."
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/admin-credentials.enc ./admin-credentials.enc
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/admin-credentials.enc ./admin-credentials.enc
       if [ $? -eq 0 ]; then
         echo "Encrypted admin credentials file downloaded to ./admin-credentials.enc"
       else
@@ -450,7 +486,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "⚠️  WARNING: Downloading encryption key - handle with extreme care!"
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/.encryption-key ./.encryption-key
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/.encryption-key ./.encryption-key
       if [ $? -eq 0 ]; then
         chmod 400 ./.encryption-key
         echo "Encryption key downloaded to ./.encryption-key (permissions: 400)"
@@ -465,7 +501,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading decryption helper script..."
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/decrypt-credentials.sh ./decrypt-credentials.sh
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/decrypt-credentials.sh ./decrypt-credentials.sh
       if [ $? -eq 0 ]; then
         chmod 700 ./decrypt-credentials.sh
         echo "Decryption helper script downloaded to ./decrypt-credentials.sh"
