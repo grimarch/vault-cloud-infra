@@ -15,6 +15,9 @@
 .terraform.lock.hcl
 .vault_docker_lab_1_init
 .bootstrap-token
+decrypt-credentials.sh
+.encryption-key
+*.enc
 devenv.lock
 terraform.tfstate
 terraform.tfvars
@@ -29,3 +32,7 @@ vault-agent/rendered
 vault-agent/sockets
 docs
 logs
+
+# Temporary SSH security files (host key verification)
+.ssh_temp/
+.ssh_known_hosts_temp

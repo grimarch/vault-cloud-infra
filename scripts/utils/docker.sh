@@ -35,77 +35,23 @@ ensure_docker_installed_and_running() {
   echo "[Docker Utils] ✅ Docker is installed and running."
 }
 
-configure_docker_tcp_listening() {
-  echo "[Docker Utils] Configuring Docker to listen on TCP (0.0.0.0:2375)..."
-  mkdir -p /etc/docker
-  cat > /etc/docker/daemon.json << EOF
-{
-  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
-}
-EOF
-
-  mkdir -p /etc/systemd/system/docker.service.d
-  cat > /etc/systemd/system/docker.service.d/override.conf << EOF
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd
-EOF
-  echo "[Docker Utils] ✅ Docker TCP configuration files created (/etc/docker/daemon.json, /etc/systemd/system/docker.service.d/override.conf)."
-}
-
-reload_and_restart_docker() {
-  echo "[Docker Utils] Reloading systemd daemon and restarting Docker service..."
-  if ! systemctl daemon-reload; then
-    echo "[Docker Utils] ERROR: systemctl daemon-reload failed!"
-    exit 1
-  fi
-  if ! systemctl restart docker; then
-    echo "[Docker Utils] ERROR: systemctl restart docker failed!"
+verify_docker_setup() {
+  echo "[Docker Utils] Verifying Docker operational status..."
+  
+  # Check if Docker service is active
+  if ! systemctl is-active --quiet docker; then
+    echo "[Docker Utils] ERROR: Docker service is not active!"
     systemctl status docker --no-pager
     exit 1
   fi
   
-  echo "[Docker Utils] Waiting for Docker service to become active after restart..."
-  local max_attempts=12 # Approx 60 seconds (12 * 5s)
-  local attempt=1
-  while (( attempt <= max_attempts )); do
-    if systemctl is-active --quiet docker; then
-      echo "[Docker Utils] ✅ Docker is active (attempt $attempt/$max_attempts)."
-      sleep 2 # Add a small additional delay to ensure Docker socket is ready
-      return 0 # Success
-    fi
-    echo "[Docker Utils] Waiting for Docker to become active... (attempt $attempt/$max_attempts, sleeping 5s)"
-    sleep 5
-    ((attempt++))
-  done
-
-  echo "[Docker Utils] ERROR: Docker did not become active after $max_attempts attempts post-restart."
-  systemctl status docker --no-pager
-  exit 1
-}
-
-verify_docker_setup() {
-  echo "[Docker Utils] Verifying Docker operational status..."
-  local max_attempts_netstat=12 # Approx 60 seconds
-  local attempt_netstat=1
-  local listening=false
-  while (( attempt_netstat <= max_attempts_netstat )); do
-    if netstat -tuln | grep -q ':2375'; then
-      echo "[Docker Utils] ✅ Docker is listening on port 2375 (attempt $attempt_netstat/$max_attempts_netstat)."
-      listening=true
-      break
-    fi
-    echo "[Docker Utils] Waiting for Docker to listen on port 2375... (attempt $attempt_netstat/$max_attempts_netstat, sleeping 5s)"
-    sleep 5
-    ((attempt_netstat++))
-  done
-
-  if [ "$listening" != "true" ]; then
-    echo '[Docker Utils] ERROR: Docker is not listening on port 2375 after multiple attempts!'
-    systemctl status docker --no-pager
+  # Check if Docker socket exists and is accessible
+  if [ ! -S /var/run/docker.sock ]; then
+    echo "[Docker Utils] ERROR: Docker socket not found at /var/run/docker.sock!"
     exit 1
   fi
 
+  # Test Docker functionality
   local max_attempts_version=12 # Approx 60 seconds
   local attempt_version=1
   local responsive=false
@@ -126,12 +72,8 @@ verify_docker_setup() {
     echo "[Docker Utils] Attempting diagnostics..."
     echo "[Docker Utils] --- Docker Status ---"
     systemctl status docker --no-pager
-    echo "[Docker Utils] --- Listening Ports (grep 2375) ---"
-    netstat -tuln | grep 2375 || echo "[Docker Utils] Port 2375 not found in netstat output."
-    echo "[Docker Utils] --- Docker Daemon Config (/etc/docker/daemon.json) ---"
-    cat /etc/docker/daemon.json
-    echo "[Docker Utils] --- Systemd Override (/etc/systemd/system/docker.service.d/override.conf) ---"
-    cat /etc/systemd/system/docker.service.d/override.conf
+    echo "[Docker Utils] --- Docker Socket Permissions ---"
+    ls -la /var/run/docker.sock || echo "[Docker Utils] Cannot list docker socket."
     exit 1
   fi
   echo "[Docker Utils] ✅ Docker operational status verified successfully."

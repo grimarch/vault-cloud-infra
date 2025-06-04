@@ -87,7 +87,7 @@ variable "project_name" {
 variable "do_droplet_name" {
   description = "Name for the DigitalOcean Droplet."
   type        = string
-  default     = "vault-host"
+  default     = "vault-cloud-infra"
 }
 
 variable "ssh_private_key_path" {
@@ -111,4 +111,22 @@ variable "num_vault_nodes" {
     condition     = var.num_vault_nodes >= 1 && var.num_vault_nodes <= 5
     error_message = "Number of Vault nodes must be between 1 and 5."
   }
+}
+
+variable "allowed_ssh_cidr_blocks" {
+  description = "List of CIDR blocks that are allowed to access the instance via SSH."
+  type        = list(string)
+  default     = ["0.0.0.0/0"] # Default allows from any IP, should be overridden
+}
+
+variable "ssh_port" {
+  description = "The port on which SSH service should listen."
+  type        = number
+  default     = 22
+}
+
+variable "emergency_ssh_access" {
+  description = "Enable emergency global SSH access to the Droplet."
+  type        = bool
+  default     = false
 }

@@ -114,18 +114,27 @@ remove-bootstrap:
 	@rm -fv .vault_bootstrap_done
 	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
 
+check-do-token:
+	@if [ -z "$(TF_VAR_do_token)" ]; then \
+		echo "❌ Error: TF_VAR_do_token environment variable is not set!"; \
+		echo "📝 Please set your DigitalOcean API token:"; \
+		echo "   export TF_VAR_do_token=\"your_digitalocean_api_token\""; \
+		exit 1; \
+	fi
+
 MY_NAME_IS := [vault-cloud-infra]
-deploy:
+deploy: check-do-token check-ssh-vars check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running deploy script..."
 	@./scripts/deploy.sh
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-deploy-debug:
+deploy-debug: check-do-token check-ssh-vars check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running deploy script in debug mode..."
+	@echo "$(MY_NAME_IS) Note: SSH path and port settings will be taken from terraform.tfvars"
 	@./scripts/deploy.sh --debug
 	@echo "$(MY_NAME_IS) Deploy script completed successfully."
 
-destroy:
+destroy: check-do-token check-public-ip check-emergency-enabled
 	@echo "$(MY_NAME_IS) Running destroy script..."
 	@terraform destroy -auto-approve
 	@read -p "⚠️  This will remove all Terraform configuration on your local machine. Are you sure you want to clean up Terraform configuration? (y/n): " confirm; \
@@ -138,11 +147,19 @@ destroy:
         terraform.tfstate \
         terraform.tfstate.backup \
         .terraform.lock.hcl \
-        .vault_docker_lab_1_init \
-		.bootstrap-token \
         stage1.tfplan \
         stage2.tfplan
+	@make remove-bootstrap-artifacts
 	@echo "$(MY_NAME_IS) Destroy script completed successfully."
+
+remove-bootstrap-artifacts:
+	@echo "$(MY_NAME_IS) Removing bootstrap artifacts..."
+	@rm -fv .bootstrap-token \
+		*.enc \
+		.encryption-key \
+        .vault_docker_lab_1_init \
+		decrypt-credentials.sh
+	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
 
 revoke-root-token:
 	@echo "$(MY_NAME_IS) Revoking root token..."
@@ -160,6 +177,85 @@ archive-logs:
 	xargs rm -v < logs_to_archive.txt; \
 	rm logs_to_archive.txt; \
 	echo "✅ Archive created: $${archive_name}"
+
+check-ssh-vars:
+	@missing_vars=""; \
+	for var in do_ssh_key_fingerprint ssh_private_key_path allowed_ssh_cidr_blocks; do \
+	  env_val=$$(printenv $${var} || true); \
+	  tfvars_val=$$(grep -E "^$${var}[[:space:]]*=" terraform.tfvars 2>/dev/null | grep -v '^#' | head -n1 | cut -d'=' -f2- | tr -d ' "\n\r\t'); \
+	  if [ -z "$$env_val" ] && [ -z "$$tfvars_val" ]; then \
+	    missing_vars="$$missing_vars $${var}"; \
+	  fi; \
+	done; \
+	if [ -n "$$missing_vars" ]; then \
+	  echo "❌ ERROR: The following required variables are missing in both environment and terraform.tfvars:$$missing_vars"; \
+	  echo "   Please set them in terraform.tfvars or export as environment variables before proceeding."; \
+	  exit 1; \
+	fi
+
+check-public-ip:
+	@current_ip=$$(curl -s https://api.ipify.org); \
+	tf_ips=$$(grep -E '^allowed_ssh_cidr_blocks' terraform.tfvars | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'); \
+	match_found=0; \
+	for ip in $$tf_ips; do \
+	  if [ "$$current_ip" = "$$ip" ]; then match_found=1; fi; \
+	done; \
+	if [ "$$match_found" = "1" ]; then \
+	  echo "✅ Your public IP ($$current_ip) is allowed."; \
+	else \
+	  echo "❌ Your IP ($$current_ip) is not listed in allowed_ssh_cidr_blocks! Add it to terraform.tfvars or run ./scripts/update_ssh_access.sh"; \
+	  exit 1; \
+	fi
+
+emergency-ssh-on: check-do-token check-ssh-vars check-public-ip
+	@read -p "Are you sure you want to enable emergency SSH access? It will allow SSH access from any IP address. (y/n): " confirm; \
+	if [ "$$confirm" != "y" ]; then \
+		echo "🚫 Emergency SSH access cancelled"; \
+		exit 1; \
+	fi
+	@echo "🔓 Enabling emergency SSH access from 0.0.0.0/0..."
+	@if grep -q '^emergency_ssh_access' terraform.tfvars; then \
+	  sed -i 's/^emergency_ssh_access *= *.*/emergency_ssh_access = true/' terraform.tfvars; \
+	else \
+	  echo 'emergency_ssh_access = true' >> terraform.tfvars; \
+	fi
+	@terraform apply -target=digitalocean_firewall.vault_firewall -auto-approve
+	@echo ""
+	@echo "📌 If SSH is unavailable, use the Droplet Console:"
+	@echo "👉 https://cloud.digitalocean.com/droplets → Console"
+	@echo ""
+	@echo "🛑 Don't forget to run: make emergency-ssh-off"
+
+emergency-ssh-off: check-do-token check-ssh-vars check-public-ip
+	@read -p "Are you sure you want to disable emergency SSH access? (y/n): " confirm; \
+	if [ "$$confirm" != "y" ]; then \
+		echo "🚫 Emergency SSH access disabled"; \
+		exit 1; \
+	fi
+	@echo "🔐 Disabling emergency SSH access..."
+	@if grep -q '^emergency_ssh_access' terraform.tfvars; then \
+	  sed -i 's/^emergency_ssh_access *= *.*/emergency_ssh_access = false/' terraform.tfvars; \
+	else \
+	  echo 'emergency_ssh_access = false' >> terraform.tfvars; \
+	fi
+	@terraform apply -target=digitalocean_firewall.vault_firewall -auto-approve
+	@echo ""
+	@echo "🔒 Emergency SSH access disabled."
+
+check-emergency-enabled:
+	@value=$$(grep -E '^emergency_ssh_access *= *true' terraform.tfvars || true); \
+	if [ -n "$$value" ]; then \
+	  echo "🟠 emergency_ssh_access is ENABLED"; \
+	  echo "⚠️  Your server will be opened to the world (0.0.0.0/0)."; \
+	  echo "💡 You can disable it with: make emergency-ssh-off"; \
+	  read -p "❓ Continue anyway? (y/n): " confirm; \
+	  if [ "$$confirm" != "y" ]; then \
+	    echo "🚫 Aborted."; \
+	    exit 1; \
+	  fi; \
+	else \
+	  echo "🟢 emergency_ssh_access is DISABLED (restricted SSH)"; \
+	fi
 
 
 .PHONY: all

@@ -12,21 +12,119 @@
 
 This project demonstrates how to automate the provisioning and initialization of a secure HashiCorp Vault cluster using:
 
-- 🔧 **Terraform** — infrastructure as code for creating Docker-based Vault cluster and optional cloud VMs
+- 🔧 **Terraform** — infrastructure as code for creating cloud VMs and orchestrating deployment
 - ☁️ **DigitalOcean** — deploy Vault to a cloud instance with pre-configuration
+- 🐳 **Docker Compose** — container orchestration for Vault nodes via SSH-based provisioning
 - ⚙️ **cloud-init** — for installing required dependencies on remote machines
 - 🚀 **Bootstrap scripts** — initialize and unseal Vault with AppRole setup
 - 🪵 **Logging and audit** — full CLI logging and state archive during deployment
 - 📁 **Modular structure** — supports CI/CD integration and future expansion
+- 🔒 **Security focused** — hardened configuration with enhanced isolation and proper TLS validation
 
 ## 📌 Key Features
 
-- ✅ Deploy Vault in Docker either locally or in the cloud (DigitalOcean)
+- ✅ Deploy Vault in Docker on cloud (DigitalOcean) instances
 - ✅ Configure number of standby nodes dynamically via Terraform
 - ✅ Log and archive all provisioning and bootstrap output
 - ✅ Securely initialize Vault with temporary tokens for AppRole auth
 - ✅ Ready-to-use scripts for development, testing, or PoC
+- ✅ Enhanced security with docker-compose and local socket access only
+- ✅ Automated Vault cluster configuration with raft storage
+- ✅ Secure non-root deployment using dedicated `vaultadmin` user
+- ✅ **Secure TLS configuration** with proper certificate validation (no VAULT_SKIP_VERIFY needed)
+- ✅ Modular cloud-init: DigitalOcean droplet-agent is configured via a dedicated utility script (`scripts/utils/agent.sh`) for safe SSH Console access
 
+## 🔐 Configuration
+
+### Prerequisites
+
+1. **DigitalOcean Account** with an API token
+2. **SSH Key** uploaded to your DigitalOcean account
+3. **Terraform** installed locally
+
+### Setup
+
+1. Copy the example configuration file:
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   ```
+
+2. **Set your DigitalOcean API token** using environment variable (recommended):
+   ```bash
+   export TF_VAR_do_token="your_digitalocean_api_token"
+   ```
+   
+   ⚠️ **NEVER** commit your API token to version control!
+
+3. Edit `terraform.tfvars` and configure:
+   - `do_ssh_key_fingerprint` - Your SSH key name or fingerprint from DigitalOcean
+   - `ssh_private_key_path` - Path to your local private SSH key
+   - `num_vault_nodes` - Number of Vault nodes (1-5)
+   - `ssh_port` - Optional: SSH port to use (default: 2222)
+
+   > ⚠️ **Important**: The `ssh_private_key_path` and `ssh_port` settings from `terraform.tfvars` will be 
+   > automatically used by deployment scripts. Do not hardcode these values in scripts.
+
+### Security Setup (Optional but Recommended)
+
+Enable git hooks to prevent accidental token commits:
+```bash
+git config core.hooksPath .githooks
+```
+
+This will activate pre-commit checks that prevent committing DigitalOcean API tokens.
+
+### Dynamic IP Management
+
+If you have a dynamic IP address, you'll need to update the allowed SSH IP addresses whenever your IP changes:
+
+1. Run the update script before connecting:
+   ```bash
+   ./scripts/update_ssh_access.sh
+   ```
+
+This script:
+- Automatically detects your current public IP address
+- Updates the `allowed_ssh_cidr_blocks` in terraform.tfvars
+- Applies the changes to the firewall rules (after confirmation)
+
+Alternatively, you can use a VPN with a static IP for connecting to your infrastructure.
+
+### SSH Access
+
+The deployment creates a dedicated `vaultadmin` user for secure, non-root access:
+- SSH root login is completely disabled for security
+- All operations are performed via the `vaultadmin` user with sudo privileges
+- SSH connections use the non-standard port configured in terraform.tfvars
+
+To connect to your instance:
+```bash
+ssh -i <your_private_key> -p <ssh_port> vaultadmin@<droplet_ip>
+```
+
+#### DigitalOcean Console (droplet-agent) Security
+
+- Cloud-init now configures the DigitalOcean droplet-agent using a dedicated utility script:
+
+```bash
+scripts/utils/agent.sh
+```
+
+This script automatically configures the droplet-agent to work with a custom SSH port and restarts the service to ensure the DigitalOcean Console remains functional even with non-standard SSH settings. All logic is moved to a separate, template-injected module, similar to the network and docker utilities.
+
+**Benefits:**
+- Secure automation of droplet-agent configuration
+- Flexible support for any SSH port
+- Simplified audit and maintenance of cloud-init
+
+#### Emergency SSH Access Control
+
+For disaster recovery or troubleshooting, you can temporarily enable SSH access from any IP address using the following Makefile targets:
+
+- `make emergency-ssh-on` — Enables emergency SSH access from `0.0.0.0/0` (all IPs) by updating the firewall and Terraform configuration. **Use only if you lose access via your allowed IPs!**
+- `make emergency-ssh-off` — Disables emergency SSH access and restores the firewall to only allow SSH from your configured `allowed_ssh_cidr_blocks`.
+
+Both commands will prompt for confirmation before making changes. Always remember to disable emergency access after resolving your issue to maintain security.
 
 ## 🚀 Usage
 
@@ -64,21 +162,69 @@ You can override default behavior using `TF_VAR_*` variables:
 
 | Variable                         | Description                                                                 |
 |----------------------------------|-----------------------------------------------------------------------------|
-| `TF_VAR_do_token`                | DigitalOcean API token.                                                     |
+| `TF_VAR_do_token`                | DigitalOcean API token. **Required** - Use environment variable only!      |
 | `TF_VAR_do_region`               | The DigitalOcean region to deploy resources in. Default "fra1"              |
 | `TF_VAR_do_droplet_size`         | The size slug for the DigitalOcean Droplet. Default "s-1vcpu-2gb"           |
 | `TF_VAR_do_droplet_image`        | The image slug for the DigitalOcean Droplet. Deafult "ubuntu-22-04-x64"     |
 | `TF_VAR_do_ssh_key_fingerprint`  | The fingerprint of the SSH key to add to the Droplet.                       |
-| `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-host"                     |
+| `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-cloud-infra"                     |
+
+
+## 🔒 TLS Security
+
+This project implements **secure TLS configuration** with proper certificate validation, eliminating the need for `VAULT_SKIP_VERIFY=true`.
+
+### 🛡️ How It Works
+
+The deployment uses self-signed certificates generated with HashiCorp Vault PKI engine:
+- **CA Certificate**: `vault-docker-lab.lan`
+- **Server Certificate**: `vault-docker-lab1.vault-docker-lab.lan`
+- **IP SAN**: `127.0.0.1, 10.1.42.101` (internal IPs)
+
+### 🌐 Accessing Vault Securely
+
+After deployment, the script will provide instructions like this:
+
+```bash
+# Step 1: Add DNS mapping to /etc/hosts
+echo '<FLOATING_IP> vault-docker-lab1.vault-docker-lab.lan' | sudo tee -a /etc/hosts
+
+# Step 2: Set environment variables
+export VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200
+export VAULT_TOKEN=<your_token>
+export VAULT_CACERT=/path/to/project/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem
+```
+
+### 🔐 Security Benefits
+
+- ✅ **Full TLS certificate validation** (CN + CA signature)
+- ✅ **Protection from MITM attacks** in network
+- ✅ **No browser security warnings**
+- ✅ **Works with curl, vault CLI, and browsers**
+
+### 📋 Alternative: System-wide CA Trust
+
+For convenience, you can install the CA certificate system-wide:
+
+```bash
+# Linux/macOS
+sudo cp /path/to/project/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem /usr/local/share/ca-certificates/vault_docker_lab_ca.crt
+sudo update-ca-certificates
+
+# Then use without VAULT_CACERT
+export VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200
+```
 
 
 ## 🛠 Tech Stack
 
 - Terraform (`.tf` + provisioners)
 - DigitalOcean provider
+- Docker Compose for container orchestration
 - Docker-based Vault cluster (official image)
-- cloud-init
-- Shell scripts (`deploy.sh`, `init-bootstrap.sh`, `cloud-init.sh`)
+- cloud-init for VM provisioning
+- Shell scripts (`generate-docker-compose.sh`, `init-bootstrap.sh`, `cloud-init.sh`)
+- SSH-based remote configuration
 - Audit logging and backup
 
 ## 🧪 Use Cases
@@ -87,6 +233,14 @@ You can override default behavior using `TF_VAR_*` variables:
 - ✔️ CI/CD integration prototype
 - ✔️ Pet project for learning infrastructure-as-code patterns
 - ✔️ Secure secret management at small scale
+
+## ⚠️ Secure handling of .encryption-key
+
+- The encryption key (.encryption-key) is automatically and securely deleted from the server after deployment and from your local machine after decryption.
+- You MUST manually save the contents of .encryption-key to a secure password manager (e.g., KeepassXC) immediately after deployment.
+- If you lose this key, you will not be able to decrypt your Vault credentials in the future.
+- Never store .encryption-key in plaintext on disk or in backups.
+- To decrypt secrets in the future, temporarily export the key from your password manager, use it, and let the script delete the file after use.
 
 ## 📜 License
 
@@ -277,6 +431,8 @@ There are just a handful of steps to make your own Vault Docker Lab.
 
 1. Follow the instructions to set an appropriate `VAULT_ADDR` environment variable, and login to Vault with the initial root token value.
 
+> **⚠️ NOTE for Cloud Deployment**: The above instructions are for local Docker setup. For DigitalOcean cloud deployment, follow the TLS Security instructions provided by the deployment script, which include setting up `/etc/hosts` mapping for proper certificate validation.
+
 ## Notes
 
 The following notes should help you better understand the container structure Vault Docker Lab uses, along with tips on commonly used features.
@@ -312,126 +468,3 @@ Vault Docker Lab tries to keep current and offer the latest available Vault Dock
 ```shell
 TF_VAR_vault_version=1.11.0 make
 ```
-
-> **Tip**: Vault versions >= 1.11.0 are recommended for ideal Integrated Storage support.
-
-### Run Vault Enterprise
-
-Vault Docker Lab runs the Vault community edition by default, but you can also run the Enterprise edition.
-
-> **NOTE**: You must have an [Enterprise license](https://www.hashicorp.com/products/vault/pricing) to run the Vault Enterprise image.
-
-Export the `TF_VAR_vault_license` environment variable with your Vault Enterprise license string as the value. For example:
-
-```shell
-export TF_VAR_vault_license=02E2VCBORGUIRSVJVCECNSNI...
-```
-
-Export the `TF_VAR_vault_edition` environment variable to specify `vault-enterprise` as the value.
-
-```shell
-export TF_VAR_vault_edition=vault-enterprise
-```
-
-Make Vault Docker Lab.
-
-```shell
-make
-```
-
-### Set the Vault server log level
-
-The default Vault server log level is Info, but you can specify another log level like `Debug`, with the `TF_VAR_vault_log_level` environment variable like this:
-
-```shell
-TF_VAR_vault_log_level=Debug make
-```
-
-### Stage a cluster
-
-By default, vault-docker-lab automatically initializes and unseals Vault. If you'd rather perform these steps yourself, you can specify that they're skipped.
-
-Stage a cluster.
-
-```shell
-make stage
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Initializing Terraform workspace ...Done.
-[vault-docker-lab] Applying Terraform configuration ...Done.
-[vault-docker-lab] Export VAULT_ADDR for the active node: export VAULT_ADDR=https://127.0.0.1:8200
-[vault-docker-lab] Vault is not initialized or unsealed. You must initialize and unseal Vault prior to use.
-```
-
-### Docker resource usage
-
-The screenshot shows a Vault Docker Lab that has been up but idle for 25 minutes.
-
-<img width="732" alt="2023-09-01_14-04-54" src="https://github.com/hashicorp-education/learn-vault-docker-lab/assets/77563/5ff76eed-7c70-4bdd-bca2-3a478d878b10">
-
-### Cleanup
-
-To clean up Docker containers and all generated artifacts, **including audit device log files**:
-
-```shell
-make clean
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Destroying Terraform configuration ...Done.
-[vault-docker-lab] Removing artifacts created by Vault Docker Lab ...Done.
-```
-
-To clean up **everything** including Terraform runtime configuration and state:
-
-```shell
-make cleanest
-```
-
-Example output:
-
-```plaintext
-[vault-docker-lab] Destroying Terraform configuration ...Done.
-[vault-docker-lab] Removing artifacts created by Vault Docker Lab ...Done.
-[vault-docker-lab] Removing all Terraform runtime configuration and state ...Done.
-```
-
-To remove the CA certificate from your OS trust store:
-
-- For macOS:
-
-  ```shell
-  sudo security delete-certificate -c "vault-docker-lab Intermediate Authority"
-  # no output expected
-  ```
-
-  - You will be prompted for your user password; enter it to add the certificate.
-
-- For Linux:
-
-  - Follow the documentation for your specific Linux distribution to remove the certificate.
-
-Unset related environment variables.
-
-```shell
-unset TF_VAR_vault_edition F_VAR_vault_license TF_VAR_vault_version VAULT_ADDR
-```
-
-## Help and reference
-
-A great resource for learning more about Vault is the [HashiCorp Developer](https://developer.hashicorp.com) site, which has a nice [Vault tutorial library](https://developer.hashicorp.com/tutorials/library?product=vault) available.
-
-If you are new to Vault, check out the **Get Started** tutorial series:
-
-- [CLI Quick Start](https://developer.hashicorp.com/vault/tutorials/getting-started)
-- [HCP Vault Quick Start](https://developer.hashicorp.com/vault/tutorials/cloud)
-- [UI Quick Start](https://developer.hashicorp.com/vault/tutorials/getting-started-ui)
-
-The tutorial library also has a wide range of intermediate and advanced tutorials with integrated hands on labs.
-
-The [API documentation](https://developer.hashicorp.com/vault/api-docs) and [product documentation](https://developer.hashicorp.com/vault/docs) are also great learning resources.

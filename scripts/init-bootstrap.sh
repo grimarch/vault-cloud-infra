@@ -36,9 +36,12 @@ fi
 # Check directory for backups
 BACKUPS_DIR="${REMOTE_BASE_DIR}/backups"
 if [ ! -d "$BACKUPS_DIR" ]; then
-  mkdir -p "$BACKUPS_DIR"
-  # Permissions will be set by the script later or should be managed by how files are written
+  sudo mkdir -p "$BACKUPS_DIR"
 fi
+
+# Ensure vaultadmin can write to backups directory
+sudo chown vaultadmin:vaultadmin "$BACKUPS_DIR"
+sudo chmod 755 "$BACKUPS_DIR"
 
 # Check Vault status
 VAULT_STATUS=$(VAULT_TOKEN="$VAULT_TOKEN" vault status -format=json 2>/dev/null || echo '{"initialized":"error","sealed":"error"}')
@@ -228,27 +231,93 @@ echo "Creating bootstrap token..."
 BOOTSTRAP_TOKEN_JSON=$(VAULT_TOKEN="$VAULT_TOKEN" vault token create -policy=bootstrap-policy -display-name="bootstrap-token" -ttl=24h -format=json)
 BOOTSTRAP_TOKEN=$(echo "$BOOTSTRAP_TOKEN_JSON" | jq -r .auth.client_token)
 
-# Save tokens and passwords to protected files
-echo "Saving credentials to $BACKUPS_DIR..."
-echo "Bootstrap Token: $BOOTSTRAP_TOKEN" > "${BACKUPS_DIR}/bootstrap-token"
-echo "Admin Username: admin" > "${BACKUPS_DIR}/admin-credentials"
-echo "Admin Password: $ADMIN_PASSWORD" >> "${BACKUPS_DIR}/admin-credentials"
-chmod 600 "${BACKUPS_DIR}/bootstrap-token" "${BACKUPS_DIR}/admin-credentials"
+# Generate encryption key for securing credentials
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+echo "Generated encryption key for securing credentials..."
 
-# Save VAULT_ADDR via floating_ip for future use
-echo "VAULT_ADDR: https://${FLOATING_IP}:8200" > "${BACKUPS_DIR}/vault-addr"
-chmod 600 "${BACKUPS_DIR}/vault-addr"
+# Save tokens and passwords to encrypted files
+echo "Saving credentials to $BACKUPS_DIR (encrypted)..."
+
+# Encrypt and save bootstrap token
+echo "Bootstrap Token: $BOOTSTRAP_TOKEN" | openssl enc -aes-256-cbc -salt -pbkdf2 -k "$ENCRYPTION_KEY" -out "${BACKUPS_DIR}/bootstrap-token.enc"
+chmod 600 "${BACKUPS_DIR}/bootstrap-token.enc"
+
+# Encrypt and save admin credentials
+{
+  echo "Admin Username: admin"
+  echo "Admin Password: $ADMIN_PASSWORD"
+} | openssl enc -aes-256-cbc -salt -pbkdf2 -k "$ENCRYPTION_KEY" -out "${BACKUPS_DIR}/admin-credentials.enc"
+chmod 600 "${BACKUPS_DIR}/admin-credentials.enc"
+
+# Save VAULT_ADDR (less sensitive, but encrypt for consistency)
+echo "VAULT_ADDR: https://${FLOATING_IP}:8200" | openssl enc -aes-256-cbc -salt -pbkdf2 -k "$ENCRYPTION_KEY" -out "${BACKUPS_DIR}/vault-addr.enc"
+chmod 600 "${BACKUPS_DIR}/vault-addr.enc"
+
+# Save encryption key separately with restricted permissions
+echo "$ENCRYPTION_KEY" | sudo tee "${BACKUPS_DIR}/.encryption-key" > /dev/null
+sudo chmod 400 "${BACKUPS_DIR}/.encryption-key"
+sudo chown vaultadmin:vaultadmin "${BACKUPS_DIR}/.encryption-key"
+
+# Create decryption helper script
+cat > "${BACKUPS_DIR}/decrypt-credentials.sh" << 'DECRYPT_EOF'
+#!/bin/bash
+# Vault Credentials Decryption Helper
+# Usage: ./decrypt-credentials.sh <encrypted-file>
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <encrypted-file>"
+    echo "Available files:"
+    ls -1 *.enc 2>/dev/null || echo "No encrypted files found"
+    exit 1
+fi
+
+ENCRYPTED_FILE="$1"
+KEY_FILE=".encryption-key"
+
+if [ ! -f "$KEY_FILE" ]; then
+    echo "Error: Encryption key file not found: $KEY_FILE"
+    exit 1
+fi
+
+if [ ! -f "$ENCRYPTED_FILE" ]; then
+    echo "Error: Encrypted file not found: $ENCRYPTED_FILE"
+    exit 1
+fi
+
+ENCRYPTION_KEY=$(cat "$KEY_FILE")
+openssl enc -aes-256-cbc -d -salt -pbkdf2 -k "$ENCRYPTION_KEY" -in "$ENCRYPTED_FILE"
+
+# === SECURITY: Delete encryption key after decryption ===
+if [ -f "$KEY_FILE" ]; then
+    echo "[SECURITY] Deleting .encryption-key from local machine for safety..."
+    chmod u+w "$KEY_FILE"
+    shred -u "$KEY_FILE"
+    echo "[SECURITY] .encryption-key securely deleted from local machine."
+fi
+DECRYPT_EOF
+
+chmod 700 "${BACKUPS_DIR}/decrypt-credentials.sh"
 
 echo "Bootstrap completed. Creating flag file..."
 touch "${REMOTE_BASE_DIR}/.vault_bootstrap_done"
 
 echo ""
 echo "==== Setup completed ===="
-echo "Bootstrap Token saved in: ${BACKUPS_DIR}/bootstrap-token"
-echo "Admin credentials saved in: ${BACKUPS_DIR}/admin-credentials"
-echo "Vault address saved in: ${BACKUPS_DIR}/vault-addr"
+echo "🔐 ENCRYPTED credentials saved in: ${BACKUPS_DIR}/"
+echo "   - bootstrap-token.enc (encrypted bootstrap token)"
+echo "   - admin-credentials.enc (encrypted admin username/password)"
+echo "   - vault-addr.enc (encrypted Vault address)"
+echo "   - .encryption-key (decryption key - KEEP SECURE!)"
+echo "   - decrypt-credentials.sh (decryption helper script)"
 echo ""
-echo "IMPORTANT! For security reasons:"
+echo "🔓 To decrypt credentials, use:"
+echo "   cd ${BACKUPS_DIR} && ./decrypt-credentials.sh <file.enc>"
+echo "   Example: ./decrypt-credentials.sh bootstrap-token.enc"
+echo ""
+echo "🚨 CRITICAL SECURITY WARNINGS:"
 echo "1. Bootstrap Token is valid for 24 hours. Use it to setup projects."
 echo "2. After setup, use admin account instead of Root Token."
 echo "3. It is recommended to revoke Root Token after all setup is complete."
+echo "4. PROTECT the .encryption-key file - it decrypts all credentials!"
+echo "5. Consider backing up the encryption key separately from the encrypted files."
+echo "6. Delete local copies of decrypted credentials after use."

@@ -35,36 +35,53 @@ resource "local_file" "vault_init_placeholder" {
 }
 
 # -----------------------------------------------------------------------
-# Provider configuration
+# SSH Host Key Management for Security
 # -----------------------------------------------------------------------
 
-provider "docker" {
-  // host = var.docker_host # Removed to allow DOCKER_HOST environment variable to take precedence
-}
-# -----------------------------------------------------------------------
-# Docker network
-# -----------------------------------------------------------------------
+# Collect SSH host key from the remote server for secure connections
+resource "null_resource" "collect_ssh_hostkey" {
+  depends_on = [digitalocean_droplet.vault_cloud_infra]
 
-resource "docker_network" "vault_docker_lab_network" {
-  name            = "vault_docker_lab_network"
-  attachable      = true
-  check_duplicate = true
-  ipam_config {
-    subnet = "10.1.42.0/24"
+  triggers = {
+    droplet_id = digitalocean_droplet.vault_cloud_infra.id
+    ssh_port   = var.ssh_port
+    droplet_ip = var.droplet_ip
+  }
+
+  # Create SSH known_hosts file with the server's host key
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Collecting SSH host key for secure connections..."
+      mkdir -p ./.ssh_temp
+      ssh-keyscan -p ${var.ssh_port} ${var.droplet_ip} > ./.ssh_temp/known_hosts 2>/dev/null || {
+        echo "Warning: Failed to collect SSH host key, retrying..."
+        sleep 5
+        ssh-keyscan -p ${var.ssh_port} ${var.droplet_ip} > ./.ssh_temp/known_hosts 2>/dev/null
+      }
+      if [ -s ./.ssh_temp/known_hosts ]; then
+        echo "SSH host key collected successfully"
+      else
+        echo "Error: Failed to collect SSH host key"
+        exit 1
+      fi
+    EOT
   }
 }
 
 # -----------------------------------------------------------------------
-# Vault image
+# Provider configuration
 # -----------------------------------------------------------------------
 
-resource "docker_image" "vault" {
-  name         = "hashicorp/${var.vault_edition}:${var.vault_version}"
-  keep_locally = true // Keep true for local dev, for droplet this might not be necessary or could be false
-}
+# Docker provider removed - we'll use docker-compose on the remote host instead
 
 # -----------------------------------------------------------------------
-# Vault container resources
+# Docker network
+# -----------------------------------------------------------------------
+
+# Docker provider removed - we'll use docker-compose on the remote host instead
+
+# -----------------------------------------------------------------------
+# Vault container configuration (used for unseal logic)
 # -----------------------------------------------------------------------
 
 locals {
@@ -109,62 +126,47 @@ locals {
   }
 }
 
-resource "docker_container" "vault-docker-lab" {
-  for_each = local.vault_containers
-  name     = each.key
-  hostname = each.key
-  env      = each.value.env
-  command = ["vault",
-    "server",
-    "-config",
-    "/vault/config/server.hcl",
-    "-log-level",
-    var.vault_log_level
-  ]
-  image    = docker_image.vault.name
-  must_run = true
-  rm       = false # Set to false to allow inspection of failed containers, true for production
+# -----------------------------------------------------------------------
+# Deploy Docker containers via docker-compose
+# -----------------------------------------------------------------------
 
-  capabilities {
-    add = ["IPC_LOCK", "SYSLOG"] # IPC_LOCK is recommended by HashiCorp for Vault
+resource "null_resource" "deploy_docker_compose" {
+  depends_on = [digitalocean_droplet.vault_cloud_infra]
+
+  triggers = {
+    generate_script_hash = filemd5("${path.module}/scripts/generate-docker-compose.sh")
+    num_nodes = var.num_vault_nodes
+    droplet_id = digitalocean_droplet.vault_cloud_infra.id
   }
 
-  healthcheck {
-    test         = ["CMD", "vault", "status"] # Basic health check
-    interval     = "10s"
-    timeout      = "2s"
-    start_period = "10s" # Give Vault some time to start before health checks begin
-    retries      = 2
+  connection {
+    type        = "ssh"
+    host        = var.droplet_ip
+    user        = "vaultadmin"
+    private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
+    timeout     = "5m"
   }
 
-  networks_advanced {
-    name         = docker_network.vault_docker_lab_network.name
-    ipv4_address = each.value.ipv4_address
+  # Copy the docker-compose generation script to the server
+  provisioner "file" {
+    source      = "${path.module}/scripts/generate-docker-compose.sh"
+    destination = "/tmp/generate-docker-compose.sh"
   }
 
-  ports {
-    internal = each.value.internal_port
-    external = each.value.external_port
-    protocol = "tcp"
+  # Generate docker-compose.yml and start containers
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /tmp/generate-docker-compose.sh",
+      "/tmp/generate-docker-compose.sh ${var.num_vault_nodes} ${digitalocean_floating_ip.vault_fip.ip_address} /opt/vault_lab/docker-compose.yml",
+      "cd /opt/vault_lab",
+      "docker-compose pull",
+      "docker-compose up -d --remove-orphans",
+      "echo 'Waiting for containers to start...'",
+      "sleep 10",
+      "docker-compose ps"
+    ]
   }
-
-  volumes {
-    host_path      = each.value.host_path_certs
-    container_path = "/vault/certs"
-  }
-
-  volumes {
-    host_path      = each.value.host_path_config
-    container_path = "/vault/config"
-  }
-
-  volumes {
-    host_path      = each.value.host_path_logs
-    container_path = "/vault/logs"
-  }
-
-  # Ensure the Droplet is ready and cloud-init is done before creating containers
-  depends_on = [digitalocean_droplet.vault_host]
 }
 
 # -----------------------------------------------------------------------
@@ -174,26 +176,27 @@ resource "docker_container" "vault-docker-lab" {
 # Initialize the first Vault node
 resource "null_resource" "active_node_init" {
   depends_on = [
-    docker_container.vault-docker-lab["vault_docker_lab_1"],
+    null_resource.deploy_docker_compose,
     local_file.vault_init_placeholder
   ]
 
   triggers = {
-    vault_node1_container_id = docker_container.vault-docker-lab["vault_docker_lab_1"].id
+    docker_compose_deployed = null_resource.deploy_docker_compose.id
   }
 
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
   provisioner "remote-exec" {
     inline = [
-      # Ждём, пока Vault запустится
-      "until curl --insecure --fail --silent https://127.0.0.1:8200/v1/sys/seal-status --output /dev/null; do printf '.'; sleep 4; done",
+      # Ждём, пока Vault запустится, используя установленный CA сертификат вместо --insecure
+      "until curl --cacert /usr/local/share/ca-certificates/vault_docker_lab_ca.crt --fail --silent https://127.0.0.1:8200/v1/sys/seal-status --output /dev/null; do printf '.'; sleep 4; done",
       # Выполняем инициализацию Vault
       "vault operator init -key-shares=1 -key-threshold=1 > /opt/vault_lab/.vault_docker_lab_1_init"
     ]
@@ -205,19 +208,20 @@ resource "null_resource" "active_node_init" {
 resource "null_resource" "active_node_unseal" {
   depends_on = [
     null_resource.active_node_init,
-    docker_container.vault-docker-lab["vault_docker_lab_1"]
+    null_resource.deploy_docker_compose
   ]
 
   triggers = {
-    vault_node1_container_id = docker_container.vault-docker-lab["vault_docker_lab_1"].id
+    docker_compose_deployed = null_resource.deploy_docker_compose.id
     init_resource_id         = null_resource.active_node_init.id
   }
 
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -240,13 +244,13 @@ resource "null_resource" "unseal_standby_node" {
 
   depends_on = [
     null_resource.active_node_unseal,
-    docker_container.vault-docker-lab # Depends on all Vault containers
+    null_resource.deploy_docker_compose # Depends on docker-compose deployment
   ]
 
   triggers = {
-    # Re-run if the active node unseal process changes or the specific standby container changes
+    # Re-run if the active node unseal process changes or docker-compose changes
     active_node_unsealed_id   = null_resource.active_node_unseal.id
-    standby_node_container_id = docker_container.vault-docker-lab[each.key].id
+    docker_compose_deployed   = null_resource.deploy_docker_compose.id
     # Re-run this resource if the content of the script file changes
     script_hash               = filemd5("${path.module}/scripts/unseal-standby-node.sh")
   }
@@ -254,8 +258,9 @@ resource "null_resource" "unseal_standby_node" {
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "5m" 
   }
 
@@ -313,8 +318,9 @@ resource "null_resource" "enable_audit_device" {
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -345,8 +351,9 @@ resource "null_resource" "vault_bootstrap" {
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "5m" # Increased timeout for bootstrap script
   }
 
@@ -402,19 +409,22 @@ resource "null_resource" "all_nodes_configured_marker" {
 # Resource for downloading necessary files from remote server
 resource "null_resource" "download_vault_files" {
   depends_on = [
-    null_resource.all_nodes_configured_marker
+    null_resource.all_nodes_configured_marker,
+    null_resource.collect_ssh_hostkey
   ]
 
   triggers = {
     # Re-run when the configuration is complete
     nodes_configured = null_resource.all_nodes_configured_marker.id
+    ssh_hostkey_collected = null_resource.collect_ssh_hostkey.id
   }
 
   connection {
     type        = "ssh"
     host        = var.droplet_ip
-    user        = "root"
+    user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
+    port        = var.ssh_port
     timeout     = "2m"
   }
 
@@ -422,8 +432,9 @@ resource "null_resource" "download_vault_files" {
   provisioner "remote-exec" {
     inline = [
       "if [ ! -f /opt/vault_lab/.vault_docker_lab_1_init ]; then echo 'Init file not found on remote server!'; exit 1; fi",
-      "if [ ! -f /opt/vault_lab/backups/bootstrap-token ]; then echo 'Bootstrap token file not found on remote server!'; exit 1; fi",
-      "echo 'Required files exist on remote server.'"
+      "if [ ! -f /opt/vault_lab/backups/bootstrap-token.enc ]; then echo 'Encrypted bootstrap token file not found on remote server!'; exit 1; fi",
+      "if [ ! -f /opt/vault_lab/backups/.encryption-key ]; then echo 'Encryption key file not found on remote server!'; exit 1; fi",
+      "echo 'Required encrypted files exist on remote server.'"
     ]
   }
 
@@ -436,7 +447,7 @@ resource "null_resource" "download_vault_files" {
   provisioner "local-exec" {
     command = <<EOT
       echo "Downloading Vault init file from remote server..."
-      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/.vault_docker_lab_1_init ./.vault_docker_lab_1_init
       if [ $? -eq 0 ]; then
         echo "Vault init file downloaded to .vault_docker_lab_1_init"
       else
@@ -445,17 +456,73 @@ resource "null_resource" "download_vault_files" {
     EOT
   }
 
-  # Download bootstrap token file
+  # Download encrypted bootstrap token file
   provisioner "local-exec" {
     command = <<EOT
-      echo "Downloading bootstrap token file..."
-      scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} root@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token ./.bootstrap-token
+      echo "Downloading encrypted bootstrap token file..."
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token.enc ./bootstrap-token.enc
       if [ $? -eq 0 ]; then
-        echo "Bootstrap token file downloaded to ./.bootstrap-token"
+        echo "Encrypted bootstrap token file downloaded to ./bootstrap-token.enc"
       else
-        echo "Failed to download bootstrap token file"
+        echo "Failed to download encrypted bootstrap token file"
       fi
     EOT
+  }
+
+  # Download encrypted admin credentials file
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading encrypted admin credentials file..."
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/admin-credentials.enc ./admin-credentials.enc
+      if [ $? -eq 0 ]; then
+        echo "Encrypted admin credentials file downloaded to ./admin-credentials.enc"
+      else
+        echo "Failed to download encrypted admin credentials file"
+      fi
+    EOT
+  }
+
+  # Download encryption key (WARNING: This is sensitive!)
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "⚠️  WARNING: Downloading encryption key - handle with extreme care!"
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/.encryption-key ./.encryption-key
+      if [ $? -eq 0 ]; then
+        chmod 400 ./.encryption-key
+        echo "Encryption key downloaded to ./.encryption-key (permissions: 400)"
+        echo "🚨 SECURITY REMINDER: Delete this file after extracting needed credentials!"
+      else
+        echo "Failed to download encryption key"
+      fi
+    EOT
+  }
+
+  # Download decryption helper script
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading decryption helper script..."
+      scp -P ${var.ssh_port} -o UserKnownHostsFile=./.ssh_temp/known_hosts -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/decrypt-credentials.sh ./decrypt-credentials.sh
+      if [ $? -eq 0 ]; then
+        chmod 700 ./decrypt-credentials.sh
+        echo "Decryption helper script downloaded to ./decrypt-credentials.sh"
+        echo "Usage: ./decrypt-credentials.sh <encrypted-file>"
+      else
+        echo "Failed to download decryption helper script"
+      fi
+    EOT
+  }
+
+  # SECURITY: Delete encryption key from server after successful download
+  provisioner "remote-exec" {
+    inline = [
+      "echo '[SECURITY] Deleting .encryption-key from server for safety...'",
+      "if [ -f /opt/vault_lab/backups/.encryption-key ]; then",
+      "  sudo shred -u /opt/vault_lab/backups/.encryption-key",
+      "  echo '[SECURITY] .encryption-key securely deleted from server.'",
+      "else",
+      "  echo '[SECURITY] .encryption-key already deleted or not found on server.'",
+      "fi"
+    ]
   }
 }
 
