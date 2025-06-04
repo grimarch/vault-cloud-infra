@@ -124,7 +124,7 @@ resource "digitalocean_droplet" "vault_cloud_infra" {
 // This deployment uses the existing self-signed certificates from the `./containers` directory.
 // - Vault CLI operations within Terraform (`null_resource` provisioners) are configured 
 //   to use the local CA certificate (`VAULT_CACERT`).
-// - `curl` commands for initial checks might use `--insecure`.
+// - `curl` commands for initial checks use the installed CA certificate (`--cacert`) for proper TLS verification.
 // - For browser access to the Vault UI, users will encounter a TLS warning.
 //   To resolve this, users can either add a browser exception or import the
 //   `./containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem` into their OS/browser trust store.

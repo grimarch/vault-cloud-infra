@@ -161,8 +161,8 @@ resource "null_resource" "active_node_init" {
 
   provisioner "remote-exec" {
     inline = [
-      # Ждём, пока Vault запустится
-      "until curl --insecure --fail --silent https://127.0.0.1:8200/v1/sys/seal-status --output /dev/null; do printf '.'; sleep 4; done",
+      # Ждём, пока Vault запустится, используя установленный CA сертификат вместо --insecure
+      "until curl --cacert /usr/local/share/ca-certificates/vault_docker_lab_ca.crt --fail --silent https://127.0.0.1:8200/v1/sys/seal-status --output /dev/null; do printf '.'; sleep 4; done",
       # Выполняем инициализацию Vault
       "vault operator init -key-shares=1 -key-threshold=1 > /opt/vault_lab/.vault_docker_lab_1_init"
     ]

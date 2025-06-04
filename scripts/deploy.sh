@@ -180,9 +180,19 @@ log_info "🔐 [SECURITY NOTICE] The .encryption-key is also automatically delet
 log_info "🔐 [SECURITY NOTICE] You MUST manually save the contents of .encryption-key to a secure password manager (e.g., KeepassXC) immediately after deployment. If you lose this key, you will not be able to decrypt your Vault credentials in the future."
 
 log_info "👉 For access to Vault use:" > /dev/tty
-    echo "   export VAULT_ADDR=https://${FLOATING_IP}:8200" > /dev/tty
+    echo "" > /dev/tty
+    echo "   # Step 1: Add DNS mapping to /etc/hosts" > /dev/tty
+    echo "   echo '${FLOATING_IP} vault-docker-lab1.vault-docker-lab.lan' | sudo tee -a /etc/hosts" > /dev/tty
+    echo "" > /dev/tty
+    echo "   # Step 2: Set environment variables" > /dev/tty
+    echo "   export VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200" > /dev/tty
     echo "   export VAULT_TOKEN=${VAULT_TOKEN}" > /dev/tty
-    echo "   export VAULT_SKIP_VERIFY=true" > /dev/tty
+    echo "   export VAULT_CACERT=${PWD}/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem" > /dev/tty
+    echo "" > /dev/tty
+    echo "   # Alternative: Trust the CA system-wide (Linux/macOS):" > /dev/tty
+    echo "   # sudo cp ${PWD}/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem /usr/local/share/ca-certificates/vault_docker_lab_ca.crt" > /dev/tty
+    echo "   # sudo update-ca-certificates" > /dev/tty
+    echo "   # (then use VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200 without VAULT_CACERT)" > /dev/tty
 
 echo ""
 log_info "📄 ==== Logs summary ===="

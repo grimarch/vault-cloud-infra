@@ -289,10 +289,10 @@ openssl enc -aes-256-cbc -d -salt -pbkdf2 -k "$ENCRYPTION_KEY" -in "$ENCRYPTED_F
 
 # === SECURITY: Delete encryption key after decryption ===
 if [ -f "$KEY_FILE" ]; then
-    echo "\n[SECURITY] Deleting .encryption-key from local machine for safety..."
+    echo "[SECURITY] Deleting .encryption-key from local machine for safety..."
     chmod u+w "$KEY_FILE"
     shred -u "$KEY_FILE"
-    echo "[SECURITY] .encryption-key securely deleted from local machine.\n"
+    echo "[SECURITY] .encryption-key securely deleted from local machine."
 fi
 DECRYPT_EOF
 

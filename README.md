@@ -19,7 +19,7 @@ This project demonstrates how to automate the provisioning and initialization of
 - 🚀 **Bootstrap scripts** — initialize and unseal Vault with AppRole setup
 - 🪵 **Logging and audit** — full CLI logging and state archive during deployment
 - 📁 **Modular structure** — supports CI/CD integration and future expansion
-- 🔒 **Security focused** — hardened configuration with enhanced isolation
+- 🔒 **Security focused** — hardened configuration with enhanced isolation and proper TLS validation
 
 ## 📌 Key Features
 
@@ -31,6 +31,7 @@ This project demonstrates how to automate the provisioning and initialization of
 - ✅ Enhanced security with docker-compose and local socket access only
 - ✅ Automated Vault cluster configuration with raft storage
 - ✅ Secure non-root deployment using dedicated `vaultadmin` user
+- ✅ **Secure TLS configuration** with proper certificate validation (no VAULT_SKIP_VERIFY needed)
 - ✅ Modular cloud-init: DigitalOcean droplet-agent is configured via a dedicated utility script (`scripts/utils/agent.sh`) for safe SSH Console access
 
 ## 🔐 Configuration
@@ -167,6 +168,52 @@ You can override default behavior using `TF_VAR_*` variables:
 | `TF_VAR_do_droplet_image`        | The image slug for the DigitalOcean Droplet. Deafult "ubuntu-22-04-x64"     |
 | `TF_VAR_do_ssh_key_fingerprint`  | The fingerprint of the SSH key to add to the Droplet.                       |
 | `TF_VAR_do_droplet_name`         | Name for the DigitalOcean Droplet. Default "vault-cloud-infra"                     |
+
+
+## 🔒 TLS Security
+
+This project implements **secure TLS configuration** with proper certificate validation, eliminating the need for `VAULT_SKIP_VERIFY=true`.
+
+### 🛡️ How It Works
+
+The deployment uses self-signed certificates generated with HashiCorp Vault PKI engine:
+- **CA Certificate**: `vault-docker-lab.lan`
+- **Server Certificate**: `vault-docker-lab1.vault-docker-lab.lan`
+- **IP SAN**: `127.0.0.1, 10.1.42.101` (internal IPs)
+
+### 🌐 Accessing Vault Securely
+
+After deployment, the script will provide instructions like this:
+
+```bash
+# Step 1: Add DNS mapping to /etc/hosts
+echo '<FLOATING_IP> vault-docker-lab1.vault-docker-lab.lan' | sudo tee -a /etc/hosts
+
+# Step 2: Set environment variables
+export VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200
+export VAULT_TOKEN=<your_token>
+export VAULT_CACERT=/path/to/project/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem
+```
+
+### 🔐 Security Benefits
+
+- ✅ **Full TLS certificate validation** (CN + CA signature)
+- ✅ **Protection from MITM attacks** in network
+- ✅ **No browser security warnings**
+- ✅ **Works with curl, vault CLI, and browsers**
+
+### 📋 Alternative: System-wide CA Trust
+
+For convenience, you can install the CA certificate system-wide:
+
+```bash
+# Linux/macOS
+sudo cp /path/to/project/containers/vault_docker_lab_1/certs/vault_docker_lab_ca.pem /usr/local/share/ca-certificates/vault_docker_lab_ca.crt
+sudo update-ca-certificates
+
+# Then use without VAULT_CACERT
+export VAULT_ADDR=https://vault-docker-lab1.vault-docker-lab.lan:8200
+```
 
 
 ## 🛠 Tech Stack
@@ -383,6 +430,8 @@ There are just a handful of steps to make your own Vault Docker Lab.
    ```
 
 1. Follow the instructions to set an appropriate `VAULT_ADDR` environment variable, and login to Vault with the initial root token value.
+
+> **⚠️ NOTE for Cloud Deployment**: The above instructions are for local Docker setup. For DigitalOcean cloud deployment, follow the TLS Security instructions provided by the deployment script, which include setting up `/etc/hosts` mapping for proper certificate validation.
 
 ## Notes
 
