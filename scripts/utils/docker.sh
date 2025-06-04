@@ -35,6 +35,42 @@ ensure_docker_installed_and_running() {
   echo "[Docker Utils] ✅ Docker is installed and running."
 }
 
+configure_docker_dns() {
+  echo "[Docker Utils] Configuring Docker DNS to use firewall-allowed nameservers..."
+  
+  # Create Docker daemon configuration directory
+  mkdir -p /etc/docker
+  
+  # Configure Docker to use specific DNS servers that match our firewall rules
+  # This prevents DNS resolution timeouts when Docker tries to use system DNS (127.0.0.53)
+  # which is blocked by our restrictive firewall configuration
+  cat > /etc/docker/daemon.json << EOF
+{
+  "dns": ["8.8.8.8", "1.1.1.1", "8.8.4.4", "1.0.0.1"],
+  "dns-opts": ["ndots:2", "timeout:3"],
+  "dns-search": ["localdomain"]
+}
+EOF
+  
+  echo "[Docker Utils] ✅ Docker DNS configuration created (/etc/docker/daemon.json)"
+  echo "[Docker Utils] DNS servers: 8.8.8.8, 1.1.1.1, 8.8.4.4, 1.0.0.1"
+  echo "[Docker Utils] Note: Docker service restart required for DNS changes to take effect"
+}
+
+test_docker_dns() {
+  echo "[Docker Utils] Testing Docker DNS resolution..."
+  
+  # Test Docker DNS resolution with a simple container
+  if docker run --rm alpine:latest nslookup registry-1.docker.io > /dev/null 2>&1; then
+    echo "[Docker Utils] ✅ Docker DNS resolution test PASSED (registry-1.docker.io resolved)"
+  else
+    echo "[Docker Utils] ⚠️  Docker DNS resolution test FAILED"
+    echo "[Docker Utils] Attempting diagnosis..."
+    docker run --rm alpine:latest nslookup registry-1.docker.io || true
+    echo "[Docker Utils] This may indicate DNS configuration issues"
+  fi
+}
+
 verify_docker_setup() {
   echo "[Docker Utils] Verifying Docker operational status..."
   

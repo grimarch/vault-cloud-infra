@@ -257,5 +257,11 @@ check-emergency-enabled:
 	  echo "🟢 emergency_ssh_access is DISABLED (restricted SSH)"; \
 	fi
 
+scan-config:
+	@echo "🛡️  Scanning configuration files (Dockerfile, docker-compose, Terraform)..."
+	@docker run --rm -v $$(pwd):/scan-target -w /scan-target \
+	  aquasec/trivy:latest \
+	  config --exit-code 1 --severity HIGH,CRITICAL --skip-dirs backups -q /scan-target
+	@echo "✅ Config scanning complete. No HIGH or CRITICAL misconfigurations found."
 
 .PHONY: all

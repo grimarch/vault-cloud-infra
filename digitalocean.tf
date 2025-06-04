@@ -206,44 +206,57 @@ resource "digitalocean_firewall" "vault_firewall" {
   # Add 8201 if it needs to be exposed for external cluster communication, 
   # but for single-droplet setup, inter-container communication via Docker network is typical.
 
-  # Outbound rules (restricted to essential services only)
-  # DNS resolution
+  # DNS resolution - STRICTLY LIMITED to trusted public DNS servers  
   outbound_rule {
     protocol              = "udp"
     port_range            = "53"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    destination_addresses = [
+      "8.8.8.8/32",    # Google DNS Primary
+      "8.8.4.4/32",    # Google DNS Secondary  
+      "1.1.1.1/32",    # Cloudflare DNS Primary
+      "1.0.0.1/32"     # Cloudflare DNS Secondary
+    ]
   }
   outbound_rule {
     protocol              = "tcp"
     port_range            = "53"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    destination_addresses = [
+      "8.8.8.8/32",    # Google DNS Primary
+      "8.8.4.4/32",    # Google DNS Secondary
+      "1.1.1.1/32",    # Cloudflare DNS Primary  
+      "1.0.0.1/32"     # Cloudflare DNS Secondary
+    ]
   }
   
-  # HTTP for package updates and Docker registry
+  # HTTP (80) - SECURITY COMPROMISE: Open to internet due to dynamic CDN IPs
+  # ⚠️ RISK: Docker Hub, Ubuntu repos use AWS ELB with changing IPs
+  # ⚠️ Static IP restrictions would break package installations
   outbound_rule {
     protocol              = "tcp"
     port_range            = "80"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
   
-  # HTTPS for secure connections and Docker registry
+  # HTTPS (443) - SECURITY COMPROMISE: Open to internet due to dynamic CDN IPs  
+  # ⚠️ RISK: Same as HTTP - modern services use dynamic IPs via CDN
+  # ⚠️ Alternative: Use corporate proxy/registry (Nexus, Artifactory)
   outbound_rule {
     protocol              = "tcp"
     port_range            = "443"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
   
-  # NTP for time synchronization
+  # NTP (123) - STRICTLY LIMITED to verified government time servers
   outbound_rule {
     protocol              = "udp"
     port_range            = "123"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-  
-  # ICMP for network diagnostics (ping, traceroute)
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    destination_addresses = [
+      "129.6.15.28/32",   # time-a-g.nist.gov
+      "129.6.15.29/32",   # time-b-g.nist.gov  
+      "129.6.15.30/32",   # time-c-g.nist.gov
+      "132.163.97.1/32",  # time-a-wwv.nist.gov
+      "132.163.97.2/32"   # time-b-wwv.nist.gov
+    ]
   }
 
   tags = ["vault-lab", "${var.project_name}"]

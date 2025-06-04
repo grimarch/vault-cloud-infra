@@ -114,7 +114,30 @@ echo "✅ Docker group configuration attempted."
 
 # --- Docker Setup using injected functions ---
 ensure_docker_installed_and_running
+configure_docker_dns
+
+# Also configure system DNS to use the same servers (backup solution)
+echo "Configuring system DNS resolution to match firewall rules..."
+cat > /etc/systemd/resolved.conf << EOF
+[Resolve]
+DNS=8.8.8.8 1.1.1.1 8.8.4.4 1.0.0.1
+FallbackDNS=
+Domains=
+DNSSEC=yes
+DNSOverTLS=no
+MulticastDNS=yes
+LLMNR=yes
+Cache=yes
+CacheFromLocalhost=no
+EOF
+
+echo "Restarting systemd-resolved and Docker service to apply DNS configuration..."
+systemctl restart systemd-resolved
+systemctl restart docker
+sleep 5
+echo "✅ Both system DNS and Docker DNS configured and restarted."
 verify_docker_setup
+test_docker_dns
 # --- End of Docker Setup ---
 
 echo "✅ Docker successfully configured and verified."
