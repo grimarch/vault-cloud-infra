@@ -15,6 +15,9 @@
 .terraform.lock.hcl
 .vault_docker_lab_1_init
 .bootstrap-token
+decrypt-credentials.sh
+.encryption-key
+*.enc
 devenv.lock
 terraform.tfstate
 terraform.tfvars

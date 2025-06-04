@@ -175,10 +175,14 @@ if [[ -z "${VAULT_TOKEN:-}" ]]; then
   exit 1
 fi
 
-log_info "👉 For access to Vault use:"
-    echo "   export VAULT_ADDR=https://${FLOATING_IP}:8200"
-    echo "   export VAULT_TOKEN=${VAULT_TOKEN}"
-    echo "   export VAULT_SKIP_VERIFY=true"
+log_info "🔐 [SECURITY NOTICE] The .encryption-key is automatically and securely deleted from the server after deployment."
+log_info "🔐 [SECURITY NOTICE] The .encryption-key is also automatically deleted from your local machine after decryption (see decrypt-credentials.sh)."
+log_info "🔐 [SECURITY NOTICE] You MUST manually save the contents of .encryption-key to a secure password manager (e.g., KeepassXC) immediately after deployment. If you lose this key, you will not be able to decrypt your Vault credentials in the future."
+
+log_info "👉 For access to Vault use:" > /dev/tty
+    echo "   export VAULT_ADDR=https://${FLOATING_IP}:8200" > /dev/tty
+    echo "   export VAULT_TOKEN=${VAULT_TOKEN}" > /dev/tty
+    echo "   export VAULT_SKIP_VERIFY=true" > /dev/tty
 
 echo ""
 log_info "📄 ==== Logs summary ===="

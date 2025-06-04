@@ -147,11 +147,19 @@ destroy: check-do-token check-public-ip check-emergency-enabled
         terraform.tfstate \
         terraform.tfstate.backup \
         .terraform.lock.hcl \
-        .vault_docker_lab_1_init \
-		.bootstrap-token \
         stage1.tfplan \
         stage2.tfplan
+	@make remove-bootstrap-artifacts
 	@echo "$(MY_NAME_IS) Destroy script completed successfully."
+
+remove-bootstrap-artifacts:
+	@echo "$(MY_NAME_IS) Removing bootstrap artifacts..."
+	@rm -fv .bootstrap-token \
+		*.enc \
+		.encryption-key \
+        .vault_docker_lab_1_init \
+		decrypt-credentials.sh
+	@echo "$(MY_NAME_IS) Bootstrap artifacts removed successfully."
 
 revoke-root-token:
 	@echo "$(MY_NAME_IS) Revoking root token..."

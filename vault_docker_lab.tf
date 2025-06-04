@@ -396,8 +396,9 @@ resource "null_resource" "download_vault_files" {
   provisioner "remote-exec" {
     inline = [
       "if [ ! -f /opt/vault_lab/.vault_docker_lab_1_init ]; then echo 'Init file not found on remote server!'; exit 1; fi",
-      "if [ ! -f /opt/vault_lab/backups/bootstrap-token ]; then echo 'Bootstrap token file not found on remote server!'; exit 1; fi",
-      "echo 'Required files exist on remote server.'"
+      "if [ ! -f /opt/vault_lab/backups/bootstrap-token.enc ]; then echo 'Encrypted bootstrap token file not found on remote server!'; exit 1; fi",
+      "if [ ! -f /opt/vault_lab/backups/.encryption-key ]; then echo 'Encryption key file not found on remote server!'; exit 1; fi",
+      "echo 'Required encrypted files exist on remote server.'"
     ]
   }
 
@@ -419,17 +420,73 @@ resource "null_resource" "download_vault_files" {
     EOT
   }
 
-  # Download bootstrap token file
+  # Download encrypted bootstrap token file
   provisioner "local-exec" {
     command = <<EOT
-      echo "Downloading bootstrap token file..."
-      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token ./.bootstrap-token
+      echo "Downloading encrypted bootstrap token file..."
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/bootstrap-token.enc ./bootstrap-token.enc
       if [ $? -eq 0 ]; then
-        echo "Bootstrap token file downloaded to ./.bootstrap-token"
+        echo "Encrypted bootstrap token file downloaded to ./bootstrap-token.enc"
       else
-        echo "Failed to download bootstrap token file"
+        echo "Failed to download encrypted bootstrap token file"
       fi
     EOT
+  }
+
+  # Download encrypted admin credentials file
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading encrypted admin credentials file..."
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/admin-credentials.enc ./admin-credentials.enc
+      if [ $? -eq 0 ]; then
+        echo "Encrypted admin credentials file downloaded to ./admin-credentials.enc"
+      else
+        echo "Failed to download encrypted admin credentials file"
+      fi
+    EOT
+  }
+
+  # Download encryption key (WARNING: This is sensitive!)
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "⚠️  WARNING: Downloading encryption key - handle with extreme care!"
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/.encryption-key ./.encryption-key
+      if [ $? -eq 0 ]; then
+        chmod 400 ./.encryption-key
+        echo "Encryption key downloaded to ./.encryption-key (permissions: 400)"
+        echo "🚨 SECURITY REMINDER: Delete this file after extracting needed credentials!"
+      else
+        echo "Failed to download encryption key"
+      fi
+    EOT
+  }
+
+  # Download decryption helper script
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "Downloading decryption helper script..."
+      scp -P ${var.ssh_port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${var.ssh_private_key_path} vaultadmin@${var.droplet_ip}:/opt/vault_lab/backups/decrypt-credentials.sh ./decrypt-credentials.sh
+      if [ $? -eq 0 ]; then
+        chmod 700 ./decrypt-credentials.sh
+        echo "Decryption helper script downloaded to ./decrypt-credentials.sh"
+        echo "Usage: ./decrypt-credentials.sh <encrypted-file>"
+      else
+        echo "Failed to download decryption helper script"
+      fi
+    EOT
+  }
+
+  # SECURITY: Delete encryption key from server after successful download
+  provisioner "remote-exec" {
+    inline = [
+      "echo '[SECURITY] Deleting .encryption-key from server for safety...'",
+      "if [ -f /opt/vault_lab/backups/.encryption-key ]; then",
+      "  sudo shred -u /opt/vault_lab/backups/.encryption-key",
+      "  echo '[SECURITY] .encryption-key securely deleted from server.'",
+      "else",
+      "  echo '[SECURITY] .encryption-key already deleted or not found on server.'",
+      "fi"
+    ]
   }
 }
 

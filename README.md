@@ -187,6 +187,14 @@ You can override default behavior using `TF_VAR_*` variables:
 - ✔️ Pet project for learning infrastructure-as-code patterns
 - ✔️ Secure secret management at small scale
 
+## ⚠️ Secure handling of .encryption-key
+
+- The encryption key (.encryption-key) is automatically and securely deleted from the server after deployment and from your local machine after decryption.
+- You MUST manually save the contents of .encryption-key to a secure password manager (e.g., KeepassXC) immediately after deployment.
+- If you lose this key, you will not be able to decrypt your Vault credentials in the future.
+- Never store .encryption-key in plaintext on disk or in backups.
+- To decrypt secrets in the future, temporarily export the key from your password manager, use it, and let the script delete the file after use.
+
 ## 📜 License
 
 This project is based on [learn-vault-docker-lab](https://github.com/hashicorp-education/learn-vault-docker-lab) by HashiCorp Education  
