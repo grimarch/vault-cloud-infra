@@ -1,0 +1,68 @@
+name: 'ShellCheck Analysis'
+description: 'Run ShellCheck analysis on shell scripts with configurable exclusions'
+inputs:
+  script_path:
+    description: 'Path to scan for shell scripts'
+    required: false
+    default: 'scripts/'
+  exclude_paths:
+    description: 'Paths to exclude from scanning (space-separated)'
+    required: false
+    default: 'scripts/legacy/*'
+  severity:
+    description: 'ShellCheck severity level'
+    required: false
+    default: 'warning'
+  check_syntax:
+    description: 'Whether to run bash syntax check'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install ShellCheck
+      shell: bash
+      run: |
+        echo "📦 Installing ShellCheck..."
+        sudo apt-get update && sudo apt-get install -y shellcheck
+        echo "✅ ShellCheck installed"
+        
+    - name: Find shell scripts
+      id: find_scripts
+      shell: bash
+      run: |
+        echo "🔍 Locating shell scripts..."
+        find_cmd="find '${{ inputs.script_path }}' -name '*.sh' -type f"
+        IFS=' ' read -ra exclude_array <<< "${{ inputs.exclude_paths }}"
+        for exclude in "${exclude_array[@]}"; do
+          find_cmd="$find_cmd -not -path \"$exclude\""
+        done
+        scripts=$(eval "$find_cmd")
+        echo "$scripts" > scripts.list
+        echo "📄 Found $(wc -l < scripts.list) scripts"
+
+    - name: Script Syntax Check
+      if: inputs.check_syntax == 'true'
+      shell: bash
+      run: |
+        echo "🔎 Running bash -n syntax check..."
+        while IFS= read -r script; do
+          echo "Syntax check: $script"
+          bash -n "$script" || exit 1
+        done < scripts.list
+        echo "✅ Syntax check passed"
+
+    - name: ShellCheck Analysis
+      shell: bash
+      run: |
+        echo "🔎 Running ShellCheck..."
+        while IFS= read -r script; do
+          echo "ShellCheck: $script"
+          shellcheck "$script" -S "${{ inputs.severity }}" || exit 1
+        done < scripts.list
+        echo "✅ ShellCheck completed successfully"
+
+    - name: Cleanup
+      shell: bash
+      run: rm -f scripts.list

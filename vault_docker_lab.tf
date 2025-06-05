@@ -91,18 +91,18 @@ locals {
   _vault_node_precalcs = {
     for idx in range(var.num_vault_nodes) :
     "vault_docker_lab_${idx + 1}" => {
-      node_key_val              = "vault_docker_lab_${idx + 1}"
-      ipv4_address_val          = "10.1.42.${101 + idx}"
+      node_key_val     = "vault_docker_lab_${idx + 1}"
+      ipv4_address_val = "10.1.42.${101 + idx}"
       # Calculate the external port string once
-      external_port_str_val     = format("%d", 8200 + ((idx == 0) ? 0 : ((idx == 1) ? 20 : (((idx - 1) * 10) + 20))))
-      cluster_addr_val          = "https://10.1.42.${101 + idx}:8201" # Uses the calculated IPv4 part
+      external_port_str_val = format("%d", 8200 + ((idx == 0) ? 0 : ((idx == 1) ? 20 : (((idx - 1) * 10) + 20))))
+      cluster_addr_val      = "https://10.1.42.${101 + idx}:8201" # Uses the calculated IPv4 part
     }
   }
 
   # Step 2: Construct the final vault_containers map using the pre-calculated values
   vault_containers = {
     for node_key, calcs in local._vault_node_precalcs : node_key => {
-      ipv4_address = calcs.ipv4_address_val
+      ipv4_address  = calcs.ipv4_address_val
       external_port = calcs.external_port_str_val # Use pre-calculated external port string
       env = [
         "VAULT_LICENSE=${var.vault_license}",
@@ -135,8 +135,8 @@ resource "null_resource" "deploy_docker_compose" {
 
   triggers = {
     generate_script_hash = filemd5("${path.module}/scripts/generate-docker-compose.sh")
-    num_nodes = var.num_vault_nodes
-    droplet_id = digitalocean_droplet.vault_cloud_infra.id
+    num_nodes            = var.num_vault_nodes
+    droplet_id           = digitalocean_droplet.vault_cloud_infra.id
   }
 
   connection {
@@ -213,7 +213,7 @@ resource "null_resource" "active_node_unseal" {
 
   triggers = {
     docker_compose_deployed = null_resource.deploy_docker_compose.id
-    init_resource_id         = null_resource.active_node_init.id
+    init_resource_id        = null_resource.active_node_init.id
   }
 
   connection {
@@ -249,10 +249,10 @@ resource "null_resource" "unseal_standby_node" {
 
   triggers = {
     # Re-run if the active node unseal process changes or docker-compose changes
-    active_node_unsealed_id   = null_resource.active_node_unseal.id
-    docker_compose_deployed   = null_resource.deploy_docker_compose.id
+    active_node_unsealed_id = null_resource.active_node_unseal.id
+    docker_compose_deployed = null_resource.deploy_docker_compose.id
     # Re-run this resource if the content of the script file changes
-    script_hash               = filemd5("${path.module}/scripts/unseal-standby-node.sh")
+    script_hash = filemd5("${path.module}/scripts/unseal-standby-node.sh")
   }
 
   connection {
@@ -261,7 +261,7 @@ resource "null_resource" "unseal_standby_node" {
     user        = "vaultadmin"
     private_key = file(var.ssh_private_key_path)
     port        = var.ssh_port
-    timeout     = "5m" 
+    timeout     = "5m"
   }
 
   # 1. Copy the unseal script to the Droplet
@@ -288,9 +288,9 @@ resource "null_resource" "all_nodes_unsealed_gate" {
   depends_on = [
     null_resource.active_node_unseal,
     null_resource.unseal_standby_node, # Depend on the entire map of standby unseal operations
-                                       # Terraform will wait for all instances if they are created.
-                                       # If num_vault_nodes = 1, unseal_standby_node creates no instances,
-                                       # and this dependency is correctly handled.
+    # Terraform will wait for all instances if they are created.
+    # If num_vault_nodes = 1, unseal_standby_node creates no instances,
+    # and this dependency is correctly handled.
   ]
 
   triggers = {
@@ -344,8 +344,8 @@ resource "null_resource" "vault_bootstrap" {
 
   triggers = {
     # Re-run bootstrap if the script changes or if the audit device resource changes
-    script_hash        = filemd5("${path.module}/scripts/init-bootstrap.sh")
-    audit_device_trigger = null_resource.enable_audit_device.id 
+    script_hash          = filemd5("${path.module}/scripts/init-bootstrap.sh")
+    audit_device_trigger = null_resource.enable_audit_device.id
   }
 
   connection {
@@ -415,7 +415,7 @@ resource "null_resource" "download_vault_files" {
 
   triggers = {
     # Re-run when the configuration is complete
-    nodes_configured = null_resource.all_nodes_configured_marker.id
+    nodes_configured      = null_resource.all_nodes_configured_marker.id
     ssh_hostkey_collected = null_resource.collect_ssh_hostkey.id
   }
 

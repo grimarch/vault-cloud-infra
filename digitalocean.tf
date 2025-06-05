@@ -6,22 +6,23 @@
 // This key will be associated with the Droplet when it's created.
 
 data "digitalocean_ssh_key" "existing_key" {
-  name = var.do_ssh_key_fingerprint # In DO, you can name your key by its fingerprint or give it a custom name.
-                                   # If you used a custom name when adding the key to DO, use that name here.
-                                   # For this setup, we assume the key *name* in DO might be its fingerprint or a custom name
-                                   # matching the fingerprint variable for simplicity, or user ensures `do_ssh_key_fingerprint` holds the *name*.
-                                   # A more robust approach might involve searching by fingerprint if API supports, or requiring key ID directly.
-                                   # DigitalOcean provider's `digitalocean_ssh_key` data source looks up by NAME.
-                                   # Let's assume `var.do_ssh_key_fingerprint` is actually the NAME of the key in DO for now as per DO provider docs.
-                                   # If user provides fingerprint, they must ensure a key with that NAME (fingerprint as name) exists.
+  name = var.do_ssh_key_fingerprint
+  # In DO, you can name your key by its fingerprint or give it a custom name.
+  # If you used a custom name when adding the key to DO, use that name here.
+  # For this setup, we assume the key *name* in DO might be its fingerprint or a custom name
+  # matching the fingerprint variable for simplicity, or user ensures `do_ssh_key_fingerprint` holds the *name*.
+  # A more robust approach might involve searching by fingerprint if API supports, or requiring key ID directly.
+  # DigitalOcean provider's `digitalocean_ssh_key` data source looks up by NAME.
+  # Let's assume `var.do_ssh_key_fingerprint` is actually the NAME of the key in DO for now as per DO provider docs.
+  # If user provides fingerprint, they must ensure a key with that NAME (fingerprint as name) exists.
 }
 
 resource "digitalocean_droplet" "vault_cloud_infra" {
-  image     = var.do_droplet_image
-  name      = var.do_droplet_name
-  region    = var.do_region
-  size      = var.do_droplet_size
-  ssh_keys  = [data.digitalocean_ssh_key.existing_key.id]
+  image    = var.do_droplet_image
+  name     = var.do_droplet_name
+  region   = var.do_region
+  size     = var.do_droplet_size
+  ssh_keys = [data.digitalocean_ssh_key.existing_key.id]
   user_data = templatefile("${path.module}/scripts/cloud-init.sh", {
     network_utils_content = file("${path.module}/scripts/utils/network.sh")
     docker_utils_content  = file("${path.module}/scripts/utils/docker.sh")
@@ -131,7 +132,7 @@ resource "digitalocean_droplet" "vault_cloud_infra" {
 // - Let's Encrypt integration is out of scope for this initial deployment phase.
 
 resource "digitalocean_floating_ip" "vault_fip" {
-  region     = digitalocean_droplet.vault_cloud_infra.region
+  region = digitalocean_droplet.vault_cloud_infra.region
 }
 
 resource "digitalocean_floating_ip_assignment" "vault_fip_assign" {
@@ -164,7 +165,7 @@ resource "digitalocean_firewall" "vault_firewall" {
   # Inbound rules
   inbound_rule {
     protocol         = "tcp"
-    port_range       = var.ssh_port # SSH on non-standard port
+    port_range       = var.ssh_port                # SSH on non-standard port
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
 
@@ -180,70 +181,83 @@ resource "digitalocean_firewall" "vault_firewall" {
 
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "8200" # Vault API vault_docker_lab_1
+    port_range       = "8200"                      # Vault API vault_docker_lab_1
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "8220" # Vault API vault_docker_lab_2
+    port_range       = "8220"                      # Vault API vault_docker_lab_2
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "8230" # Vault API vault_docker_lab_3
+    port_range       = "8230"                      # Vault API vault_docker_lab_3
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "8240" # Vault API vault_docker_lab_4
+    port_range       = "8240"                      # Vault API vault_docker_lab_4
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   inbound_rule {
     protocol         = "tcp"
-    port_range       = "8250" # Vault API vault_docker_lab_5
+    port_range       = "8250"                      # Vault API vault_docker_lab_5
     source_addresses = var.allowed_ssh_cidr_blocks # Only from allowed IPs
   }
   # Add 8201 if it needs to be exposed for external cluster communication, 
   # but for single-droplet setup, inter-container communication via Docker network is typical.
 
-  # Outbound rules (restricted to essential services only)
-  # DNS resolution
+  # DNS resolution - STRICTLY LIMITED to trusted public DNS servers  
   outbound_rule {
-    protocol              = "udp"
-    port_range            = "53"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    protocol   = "udp"
+    port_range = "53"
+    destination_addresses = [
+      "8.8.8.8/32", # Google DNS Primary
+      "8.8.4.4/32", # Google DNS Secondary  
+      "1.1.1.1/32", # Cloudflare DNS Primary
+      "1.0.0.1/32"  # Cloudflare DNS Secondary
+    ]
   }
   outbound_rule {
-    protocol              = "tcp"
-    port_range            = "53"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    protocol   = "tcp"
+    port_range = "53"
+    destination_addresses = [
+      "8.8.8.8/32", # Google DNS Primary
+      "8.8.4.4/32", # Google DNS Secondary
+      "1.1.1.1/32", # Cloudflare DNS Primary  
+      "1.0.0.1/32"  # Cloudflare DNS Secondary
+    ]
   }
-  
-  # HTTP for package updates and Docker registry
+
+  # HTTP (80) - SECURITY COMPROMISE: Open to internet due to dynamic CDN IPs
+  # ⚠️ RISK: Docker Hub, Ubuntu repos use AWS ELB with changing IPs
+  # ⚠️ Static IP restrictions would break package installations
   outbound_rule {
     protocol              = "tcp"
     port_range            = "80"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
-  
-  # HTTPS for secure connections and Docker registry
+
+  # HTTPS (443) - SECURITY COMPROMISE: Open to internet due to dynamic CDN IPs  
+  # ⚠️ RISK: Same as HTTP - modern services use dynamic IPs via CDN
+  # ⚠️ Alternative: Use corporate proxy/registry (Nexus, Artifactory)
   outbound_rule {
     protocol              = "tcp"
     port_range            = "443"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
-  
-  # NTP for time synchronization
+
+  # NTP (123) - STRICTLY LIMITED to verified government time servers
   outbound_rule {
-    protocol              = "udp"
-    port_range            = "123"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
-  }
-  
-  # ICMP for network diagnostics (ping, traceroute)
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = ["0.0.0.0/0", "::/0"]
+    protocol   = "udp"
+    port_range = "123"
+    destination_addresses = [
+      "129.6.15.28/32",  # time-a-g.nist.gov
+      "129.6.15.29/32",  # time-b-g.nist.gov  
+      "129.6.15.30/32",  # time-c-g.nist.gov
+      "132.163.97.1/32", # time-a-wwv.nist.gov
+      "132.163.97.2/32"  # time-b-wwv.nist.gov
+    ]
   }
 
   tags = ["vault-lab", "${var.project_name}"]

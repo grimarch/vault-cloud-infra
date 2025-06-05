@@ -1,0 +1,57 @@
+name: 'Terraform Validation'
+description: 'Run Terraform formatting, initialization and validation checks'
+inputs:
+  terraform_version:
+    description: 'Terraform version to use'
+    required: false
+    default: '1.6.0'
+  check_format:
+    description: 'Whether to check Terraform formatting'
+    required: false
+    default: 'true'
+  backend_config:
+    description: 'Whether to initialize with backend'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+        
+    - name: Terraform Format Check
+      if: inputs.check_format == 'true'
+      shell: bash
+      run: |
+        echo "🔍 Checking Terraform formatting..."
+        if ! terraform fmt -check -recursive; then
+          echo "❌ Terraform files are not properly formatted!"
+          echo "💡 Please run: terraform fmt -recursive"
+          echo ""
+          echo "Files that need formatting:"
+          terraform fmt -check -recursive -diff
+          exit 1
+        else
+          echo "✅ Terraform formatting is correct"
+        fi
+        
+    - name: Terraform Init
+      shell: bash
+      run: |
+        echo "🔍 Initializing Terraform..."
+        if [[ "${{ inputs.backend_config }}" == "true" ]]; then
+          terraform init
+        else
+          terraform init -backend=false
+        fi
+        echo "✅ Terraform initialization completed"
+        
+    - name: Terraform Validate
+      shell: bash
+      run: |
+        echo "🔍 Validating Terraform configuration..."
+        terraform validate -no-color
+        echo "✅ Terraform validation passed" 

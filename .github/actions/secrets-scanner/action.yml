@@ -1,0 +1,95 @@
+name: 'Secrets Scanner'
+description: 'Scan for hardcoded secrets with standardized patterns'
+inputs:
+  scan_path:
+    description: 'Path to scan for secrets'
+    required: false
+    default: '.'
+  exclude_dirs:
+    description: 'Directories to exclude (space-separated)'
+    required: false
+    default: '.git .github scripts/legacy'
+  exclude_files:
+    description: 'File patterns to exclude (space-separated)'  
+    required: false
+    default: '*.md terraform.tfvars.example'
+  filter_bash_vars:
+    description: 'Whether to filter out bash variables (="$VAR")'
+    required: false
+    default: 'true'
+  extra_patterns:
+    description: 'Additional patterns to search (newline-separated)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Secrets Pattern Scanning
+      shell: bash
+      run: |
+        echo "🔍 Scanning for hardcoded secrets..."
+        
+        # Standard secret patterns - synchronized across all workflows
+        secret_patterns=(
+          # Only match hardcoded secrets - exclude bash variables with $
+          "password\s*=\s*['\"][a-zA-Z0-9!@#%^&*()_+=-]{12,}['\"]"
+          "api_key\s*=\s*['\"][a-zA-Z0-9]{20,}['\"]"
+          "dop_v1_[a-f0-9]{64}"
+          "sk-[a-zA-Z0-9]{48}"
+          "pk-[a-zA-Z0-9]{64}"  
+          "ghp_[a-zA-Z0-9]{36}"
+          "gho_[a-zA-Z0-9]{36}"
+          "AWS_SECRET_ACCESS_KEY\s*=\s*['\"][A-Za-z0-9+/]{40}['\"]"
+          "PRIVATE_KEY.*BEGIN.*PRIVATE.*KEY"
+        )
+        
+        # Add extra patterns if provided
+        if [[ -n "${{ inputs.extra_patterns }}" ]]; then
+          while IFS= read -r pattern; do
+            [[ -n "$pattern" ]] && secret_patterns+=("$pattern")
+          done <<< "${{ inputs.extra_patterns }}"
+        fi
+        
+        # Build exclude arguments
+        exclude_args=""
+        IFS=' ' read -ra exclude_dirs <<< "${{ inputs.exclude_dirs }}"
+        for dir in "${exclude_dirs[@]}"; do
+          exclude_args="$exclude_args --exclude-dir=$dir"
+        done
+        
+        IFS=' ' read -ra exclude_files <<< "${{ inputs.exclude_files }}"
+        for file in "${exclude_files[@]}"; do
+          exclude_args="$exclude_args --exclude=$file"
+        done
+        
+        # Scan for secrets
+        secrets_found=false
+        for pattern in "${secret_patterns[@]}"; do
+          echo "🔍 Checking pattern: ${pattern:0:30}..."
+          
+          # Search for pattern and filter results
+          results=$(grep -r -E "$pattern" "${{ inputs.scan_path }}" $exclude_args || true)
+          
+          # Filter out bash variables if requested
+          if [[ "${{ inputs.filter_bash_vars }}" == "true" ]]; then
+            filtered_results=$(echo "$results" | grep -v '="\$' || true)
+          else
+            filtered_results="$results"
+          fi
+          
+          if [[ -n "$filtered_results" ]]; then
+            echo "❌ Potential secret found matching pattern: $pattern"
+            echo "$filtered_results"
+            secrets_found=true
+          fi
+        done
+        
+        if [[ "$secrets_found" == "true" ]]; then
+          echo ""
+          echo "🚨 SECURITY ALERT: Potential hardcoded secrets detected!"
+          echo "Please review the findings above and ensure no real secrets are committed."
+          exit 1
+        else
+          echo "✅ No hardcoded secrets detected"
+        fi 
