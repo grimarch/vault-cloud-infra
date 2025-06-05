@@ -1,0 +1,43 @@
+name: 🧪 Linting & Validation
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  terraform-validation:
+    name: 🔧 Terraform Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Terraform Validation
+      uses: ./.github/actions/terraform-validation
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        check_format: 'true'
+        backend_config: 'false'
+
+  script-testing:
+    name: 📜 Script Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+        
+    - name: ShellCheck Analysis
+      uses: ./.github/actions/shellcheck-analysis
+      with:
+        script_path: 'scripts/'
+        exclude_paths: 'scripts/legacy/*'
+        severity: 'warning'
+        check_syntax: 'true'

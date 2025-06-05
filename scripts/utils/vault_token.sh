@@ -126,6 +126,7 @@ get_bootstrap_token() {
       
       if [[ -n "$local_token" ]]; then
         log_success "✅ Successfully decrypted and retrieved bootstrap token"
+        # shellcheck disable=SC2034  # VAULT_TOKEN used by external calling scripts
         VAULT_TOKEN="$local_token"
         
         # Clean up decrypted file for security

@@ -20,7 +20,7 @@
 # export TF_VAR_docker_host="tcp://docker:2345"
 
 variable "docker_host" {
-    default = "unix:///var/run/docker.sock"
+  default = "unix:///var/run/docker.sock"
 }
 
 # -----------------------------------------------------------------------
@@ -29,22 +29,22 @@ variable "docker_host" {
 
 # Set TF_VAR_vault_version to override this
 variable "vault_version" {
-    default = "latest"
+  default = "latest"
 }
 
 # Set TF_VAR_vault_edition to override this
 variable "vault_edition" {
-    default = "vault"
+  default = "vault"
 }
 
 # Set TF_VAR_vault_license to override this
 variable "vault_license" {
-    default = "https://www.hashicorp.com/products/vault/pricing"
+  default = "https://www.hashicorp.com/products/vault/pricing"
 }
 
 # Set TF_VAR_vault_log_level to override this
 variable "vault_log_level" {
-    default = "info"
+  default = "info"
 }
 
 variable "do_token" {
@@ -117,7 +117,7 @@ variable "allowed_ssh_cidr_blocks" {
   description = "List of CIDR blocks that are allowed to access the instance via SSH. MUST be specified explicitly for security. WARNING: Using 0.0.0.0/0 opens SSH to the entire internet - use only for emergency access!"
   type        = list(string)
   # No default - user MUST provide explicit IP addresses for security
-  
+
   validation {
     condition     = length(var.allowed_ssh_cidr_blocks) > 0
     error_message = "allowed_ssh_cidr_blocks must contain at least one CIDR block. Specify your IP address(es) or use emergency_ssh_access flag for temporary global access."

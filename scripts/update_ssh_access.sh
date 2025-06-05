@@ -33,10 +33,10 @@ fi
 # Update allowed_ssh_cidr_blocks in terraform.tfvars
 if grep -q "allowed_ssh_cidr_blocks" "$TFVARS_FILE"; then
     # If the variable already exists, update it
-    sed -i "s|allowed_ssh_cidr_blocks=.*|allowed_ssh_cidr_blocks=[\"$CURRENT_IP/32\"]|" "$TFVARS_FILE"
+    sed -i "s|allowed_ssh_cidr_blocks = .*|allowed_ssh_cidr_blocks = [\"$CURRENT_IP/32\"]|" "$TFVARS_FILE"
 else
     # If the variable doesn't exist, add it
-    echo "allowed_ssh_cidr_blocks=[\"$CURRENT_IP/32\"]" >> "$TFVARS_FILE"
+    echo "allowed_ssh_cidr_blocks = [\"$CURRENT_IP/32\"]" >> "$TFVARS_FILE"
 fi
 
 echo "✅ Updated $TFVARS_FILE with your current IP: $CURRENT_IP/32"

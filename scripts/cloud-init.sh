@@ -4,14 +4,17 @@ set -euxo pipefail # Halt on error and undefined variables
 export DEBIAN_FRONTEND=noninteractive
 
 # --- BEGIN INJECTED NETWORK UTILS ---
+# shellcheck disable=SC2154  # network_utils_content injected by Terraform
 ${network_utils_content}
 # --- END INJECTED NETWORK UTILS ---
 
 # --- BEGIN INJECTED DOCKER UTILS ---
+# shellcheck disable=SC2154  # docker_utils_content injected by Terraform  
 ${docker_utils_content}
 # --- END INJECTED DOCKER UTILS ---
 
 # --- BEGIN INJECTED AGENT UTILS ---
+# shellcheck disable=SC2154  # agent_utils_content injected by Terraform
 ${agent_utils_content}
 # --- END INJECTED AGENT UTILS ---
 
@@ -46,10 +49,11 @@ echo "✅ Finished system updates and package installation (including Vault)."
 
 # Configure Fail2ban for SSH protection
 echo "Configuring Fail2ban for SSH protection..."
+# shellcheck disable=SC2154  # ssh_port is Terraform template variable
 cat > /etc/fail2ban/jail.local << EOL
 [sshd]
 enabled = true
-port = ${ssh_port}
+port = ${ssh_port}  # ssh_port injected by Terraform
 filter = sshd
 logpath = /var/log/auth.log
 maxretry = 5
@@ -62,6 +66,7 @@ echo "✅ Fail2ban configured and started for SSH protection."
 
 # Configure SSH to use non-standard port and enhance security
 echo "Configuring SSH security settings..."
+# shellcheck disable=SC2154  # ssh_port injected by Terraform
 sed -i "s/#Port 22/Port ${ssh_port}/" /etc/ssh/sshd_config
 sed -i "s/^#*PermitRootLogin.*/PermitRootLogin no/" /etc/ssh/sshd_config
 sed -i "s/#PasswordAuthentication yes/PasswordAuthentication no/" /etc/ssh/sshd_config
@@ -150,6 +155,7 @@ chmod -R 755 /opt/vault_lab
 
 # Create subdirectories for each Vault instance
 echo "Creating subdirectories for Vault instances..."
+# shellcheck disable=SC2034  # i used in loop variable expansion 
 for i in {1..5}
   do
     mkdir -p /opt/vault_lab/containers/vault_docker_lab_"$${i}"/logs

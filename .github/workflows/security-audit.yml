@@ -1,0 +1,160 @@
+name: 🔒 Security Audit
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security scan daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+env:
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  terraform-security:
+    name: 🔍 Terraform Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy Security Scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'HIGH,CRITICAL'
+        skip-dirs: 'backups'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: Trivy Config Summary
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: '.'
+        format: 'table'
+        severity: 'HIGH,CRITICAL'
+        skip-dirs: 'backups'
+
+  docker-security:
+    name: 🐳 Docker Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Scan Docker configurations
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: './containers'
+        format: 'table'
+        severity: 'HIGH,CRITICAL'
+
+  script-security:
+    name: 📜 Script Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Bandit
+      run: |
+        pip install bandit[sarif]
+        bandit -r . -f sarif -o bandit-results.sarif
+        
+    - name: Upload Bandit scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'bandit-results.sarif'
+
+  compliance-check:
+    name: 📋 Compliance Verification
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check required files exist
+      if: ${{ hashFiles('.gitignore', 'terraform.tfvars.example', '.githooks/pre-commit', '.gitsecrets') == '' }}
+      run: echo "❌ Required files are missing."
+
+    - name: Verify no secrets in repository
+      uses: ./.github/actions/secrets-scanner
+      with:
+        scan_path: '.'
+        exclude_dirs: '.git .github scripts/legacy'
+        exclude_files: '*.md terraform.tfvars.example .githooks/pre-commit .gitsecrets'
+        filter_bash_vars: 'true'
+        
+    - name: Check for TODO security items
+      run: |
+        echo "🔍 Checking for security TODOs..."
+        security_todos=$(grep -r -i "TODO.*security\|FIXME.*security\|XXX.*security" . \
+                        --exclude-dir=.git \
+                        --exclude-dir=.github || true)
+        if [[ -n "$security_todos" ]]; then
+          echo "⚠️ Security TODOs found:"
+          echo "$security_todos"
+        else
+          echo "✅ No security TODOs found"
+        fi
+
+  vulnerability-report:
+    name: 📊 Generate Vulnerability Report
+    runs-on: ubuntu-latest
+    needs: [terraform-security, docker-security, script-security]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create Security Summary
+      run: |
+        echo "# 🔒 Security Audit Summary" > security-summary.md
+        echo "" >> security-summary.md
+        echo "**Date**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> security-summary.md
+        echo "**Branch**: ${{ github.ref_name }}" >> security-summary.md
+        echo "**Commit**: ${{ github.sha }}" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        # Job status summary
+        echo "## Job Results" >> security-summary.md
+        echo "- Terraform Security: ${{ needs.terraform-security.result }}" >> security-summary.md
+        echo "- Docker Security: ${{ needs.docker-security.result }}" >> security-summary.md  
+        echo "- Script Security: ${{ needs.script-security.result }}" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        # Recommendations
+        echo "## 🎯 Recommendations" >> security-summary.md
+        echo "1. Review any failed security checks above" >> security-summary.md
+        echo "2. Run \`make scan-config\` locally before pushing" >> security-summary.md
+        echo "3. Ensure emergency_ssh_access is disabled in production" >> security-summary.md
+        
+    - name: Upload Security Summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-audit-summary
+        path: security-summary.md
+        retention-days: 30 
